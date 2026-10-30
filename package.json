@@ -1,0 +1,11 @@
+{
+  "name": "chain-shift",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A 6x6 chain-reaction puzzle: predict where everything stops.",
+  "scripts": {
+    "start": "node tools/serve.mjs 8080",
+    "test": "node --test tests/*.test.mjs"
+  }
+}
