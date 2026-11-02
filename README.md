@@ -79,8 +79,10 @@ The apps show AdMob interstitials through [`@capacitor-community/admob`](https:/
 
 - **When:** after the player solves a level or an Endless puzzle and taps Next. The first 4 solves of a session have no ads. After that, ads are at least 3 solves and 3 minutes apart. The Daily and shared challenges never show ads.
 - **Consent:** Google's consent form (UMP) appears at launch where the law requires it. In those regions the menu also shows **Privacy settings**.
+- **Tracking (iOS):** after the consent step, Apple's App Tracking Transparency prompt asks once whether ads may be personalized (`askToTrack` in `js/ads.js`). The App Store privacy label declares tracking for Device ID and Advertising Data, so this prompt must stay.
 - **IDs:** the AdMob app IDs are in `android/app/src/main/res/values/strings.xml` (`admob_app_id`) and `ios/App/App/Info.plist` (`GADApplicationIdentifier`). The interstitial ad unit IDs are in `INTERSTITIAL` in `js/ads.js`. Clear an ad unit ID there to get Google's demo ads on that platform.
 - **Privacy policy:** `privacy.html`, published at https://allendev1.github.io/chain-shift/privacy.html. The menu links to it. Use this URL in AdMob, Play Console and App Store Connect, and update the page if the apps start collecting anything new.
+- **Support page:** `support.html`, published at https://allendev1.github.io/chain-shift/support.html. Players reach support at info@thebrilliantideas.com. Use this URL as the App Store support URL.
 - **Testing:** these are live ads. Register your phones under AdMob → Settings → Test devices before tapping any of them. Simulators and emulators get test ads automatically.
 
 App icons and splash screens are generated from `assets/` with `npx @capacitor/assets generate --ios --android` (background `#0f1020`).

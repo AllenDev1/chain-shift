@@ -43,6 +43,20 @@ function preload() {
     .finally(() => (loading = false));
 }
 
+// iOS: Apple's App Tracking Transparency prompt, which the App Store requires because the
+// privacy label declares tracking for personalized ads. Asked once, after the consent form
+// and before the first ad; skipped if an AdMob IDFA message already asked. Either answer
+// still gets ads; "Ask App Not to Track" just makes them non-personalized.
+async function askToTrack() {
+  if (platform !== 'ios') return;
+  try {
+    const { status } = await AdMob.trackingAuthorizationStatus();
+    if (status === 'notDetermined') await AdMob.requestTrackingAuthorization();
+  } catch {
+    /* ATT unavailable: ads stay non-personalized */
+  }
+}
+
 // Asks for consent where the law requires it (Google's UMP form, configured under AdMob →
 // Privacy & messaging), then starts the SDK and loads the first ad. Call once after boot.
 export async function startAds() {
@@ -54,6 +68,7 @@ export async function startAds() {
     }
     privacyRequired = consent.privacyOptionsRequirementStatus === 'REQUIRED';
     if (!consent.canRequestAds) return;
+    await askToTrack();
     await AdMob.initialize();
     started = true;
     AdMob.addListener('interstitialAdDismissed', preload);
