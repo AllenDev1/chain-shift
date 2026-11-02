@@ -66,6 +66,14 @@ npm run android   # builds www/, syncs, opens Android Studio
 npm run sync      # after any change to the game files
 ```
 
+To upload an iOS build to App Store Connect without signing in to Xcode, use an App Store Connect API key (Users and Access → Integrations, Admin access). Put the `.p8` file in `~/.appstoreconnect/private_keys/`, then run:
+
+```sh
+ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> npm run ios:upload
+```
+
+`tools/ios-upload.sh` archives, signs and uploads the app. It sets a new build number each time (date and time, for example `261102.1530`).
+
 `tools/build-www.mjs` copies the game into `www/` and adds Capacitor's runtime (`capacitor.js`). `js/native.js` is the only app-specific module. In the browser it does nothing, and in the apps it replaces four browser features:
 
 - **Saves:** Preferences instead of `localStorage`, which iOS may clear.
