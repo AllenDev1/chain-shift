@@ -1,0 +1,19 @@
+node_modules/
+www/
+store-assets/
+
+# Signing keys and credentials: never commit these
+*.jks
+*.keystore
+keystore.properties
+*.p12
+*.p8
+*.mobileprovision
+*.cer
+.env*
+
+# OS, editors, logs
+.DS_Store
+.idea/
+.vscode/
+*.log

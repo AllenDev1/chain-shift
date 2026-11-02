@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Chain Shift</string>
+    <string name="title_activity_main">Chain Shift</string>
+    <string name="package_name">com.chainshift.game</string>
+    <string name="custom_url_scheme">com.chainshift.game</string>
+    <!-- AdMob app ID (AdMob → Apps → App settings). -->
+    <string name="admob_app_id">ca-app-pub-1949655614307812~4000540829</string>
+</resources>

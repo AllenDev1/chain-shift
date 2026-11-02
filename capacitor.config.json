@@ -1,0 +1,22 @@
+{
+  "appId": "com.chainshift.game",
+  "appName": "Chain Shift",
+  "webDir": "www",
+  "backgroundColor": "#0f1020",
+  "ios": {
+    "contentInset": "never"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "initialViewportFitValueHint": "cover",
+      "style": "DARK"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 300,
+      "launchFadeOutDuration": 200,
+      "backgroundColor": "#0f1020",
+      "showSpinner": false
+    }
+  }
+}
