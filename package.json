@@ -1,6 +1,6 @@
 {
   "name": "chain-shift",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "A 6x6 chain-reaction puzzle: predict where everything stops.",
