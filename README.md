@@ -55,6 +55,45 @@ Opening `index.html` directly from disk won't work, because browsers block ES mo
 
 To deploy, enable GitHub Pages on the repo root. Share links use the page's own URL.
 
+## iOS and Android apps
+
+The store apps wrap the same files with [Capacitor](https://capacitorjs.com) 8 (`com.chainshift.game`). The web version is unchanged and still has no build step.
+
+```sh
+npm install
+npm run ios       # builds www/, syncs, opens Xcode
+npm run android   # builds www/, syncs, opens Android Studio
+npm run sync      # after any change to the game files
+```
+
+`tools/build-www.mjs` copies the game into `www/` and adds Capacitor's runtime (`capacitor.js`). `js/native.js` is the only app-specific module. In the browser it does nothing, and in the apps it replaces four browser features:
+
+- **Saves:** Preferences instead of `localStorage`, which iOS may clear.
+- **Haptics:** native haptics instead of `navigator.vibrate`, which iOS doesn't support.
+- **Sharing:** the share card is written to a file and handed to the native share sheet.
+- **Links and Back:** share links point at the GitHub Pages URL (`WEB_URL`). Android's Back button closes sheets, then sends the app to the background.
+
+### Ads
+
+The apps show AdMob interstitials through [`@capacitor-community/admob`](https://github.com/capacitor-community/admob). The web version has no ads. All the ad logic is in `js/ads.js`:
+
+- **When:** after the player solves a level or an Endless puzzle and taps Next. The first 4 solves of a session have no ads. After that, ads are at least 3 solves and 3 minutes apart. The Daily and shared challenges never show ads.
+- **Consent:** Google's consent form (UMP) appears at launch where the law requires it. In those regions the menu also shows **Privacy settings**.
+- **IDs:** the AdMob app IDs are in `android/app/src/main/res/values/strings.xml` (`admob_app_id`) and `ios/App/App/Info.plist` (`GADApplicationIdentifier`). The interstitial ad unit IDs are in `INTERSTITIAL` in `js/ads.js`. Clear an ad unit ID there to get Google's demo ads on that platform.
+- **Privacy policy:** `privacy.html`, published at https://allendev1.github.io/chain-shift/privacy.html. The menu links to it. Use this URL in AdMob, Play Console and App Store Connect, and update the page if the apps start collecting anything new.
+- **Testing:** these are live ads. Register your phones under AdMob → Settings → Test devices before tapping any of them. Simulators and emulators get test ads automatically.
+
+App icons and splash screens are generated from `assets/` with `npx @capacitor/assets generate --ios --android` (background `#0f1020`).
+
+### Store screenshots and videos
+
+`npm run store-assets` builds every App Store and Google Play asset into `store-assets/`, which git ignores. It needs Google Chrome and ffmpeg and takes about four minutes. Add `-- stills` to skip the videos.
+
+- **Screenshots** come from the real game, driven in headless Chrome on a frame-exact clock (`tools/store/harness.mjs`). Puzzles are solved with the game's own solver.
+- **Hero art and videos** (the App Store header and search results images, the Play feature graphic and the promo video) use the board film in `tools/store/film.js`, drawn by the game's renderer at full resolution. `tools/store/compose.html` lays them out.
+
+Edit captions in `SHOTS` in `tools/store/make.mjs`, and taglines in `compose.html`.
+
 ## Layout
 
 ```

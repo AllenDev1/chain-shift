@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Store art</title>
+<!--
+  Lays out one piece of store art at its exact pixel size. The spec comes in the URL hash
+  as JSON (see make.mjs):
+    shot     a caption over a device showing a raw screenshot
+    header   App Store product page header (21:9)
+    search   App Store search results card (3:2)
+    feature  Google Play feature graphic
+    promo    Google Play promo video background (16:9)
+  Hero kinds draw the board film's busiest frame, or leave a slot (board: "slot") that
+  make.mjs fills with the film itself; the slot's rect is published as window.__slot.
+-->
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: var(--w); height: var(--h); overflow: hidden; }
+  body {
+    font-family: system-ui, -apple-system, 'SF Pro Display', sans-serif;
+    color: #f1f2ff;
+    background:
+      radial-gradient(120% 70% at 50% 0%, #2a1d5c 0%, rgba(42, 29, 92, 0) 60%),
+      linear-gradient(180deg, #15143a 0%, #0f1020 55%, #0c0d1a 100%);
+    -webkit-font-smoothing: antialiased;
+  }
+  em { font-style: normal; color: #5ef2ff; }
+  .glow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(94, 242, 255, 0.18), rgba(94, 242, 255, 0)); pointer-events: none; }
+
+  /* ---- captioned screenshots ---- */
+  .shot { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; }
+  .caption { text-align: center; padding: 0 7%; }
+  .caption h1 { font-weight: 800; letter-spacing: -0.015em; line-height: 1.06; text-wrap: balance; }
+  .caption p { color: #a9abd9; font-weight: 500; line-height: 1.3; margin-top: 0.55em; text-wrap: balance; }
+  .device { position: relative; background: #05060f; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.10), 0 40px 120px rgba(0, 0, 0, 0.55); }
+  .device img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+  /* ---- hero layouts ---- */
+  .hero { position: absolute; inset: 0; }
+  .brand { display: flex; align-items: center; }
+  .brand img { display: block; border-radius: 22%; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); }
+  .wordmark { font-weight: 800; letter-spacing: 0.28em; line-height: 1; }
+  .tagline { color: #a9abd9; font-weight: 600; line-height: 1.2; }
+  .headline { font-weight: 800; letter-spacing: -0.015em; line-height: 1.05; }
+  canvas.board { position: absolute; }
+</style>
+</head>
+<body>
+<script type="module">
+import { makeFilm, drawFrame, heroFrame } from './film.js';
+
+const spec = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+const { w, h } = spec;
+document.documentElement.style.setProperty('--w', `${w}px`);
+document.documentElement.style.setProperty('--h', `${h}px`);
+const el = (tag, cls, html) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, html != null ? { innerHTML: html } : {});
+const rich = (s) => s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+const loads = [];
+const img = (src) => {
+  const i = new Image();
+  i.src = src;
+  loads.push(i.decode());
+  return i;
+};
+function glow(x, y, r) {
+  const g = el('div', 'glow');
+  Object.assign(g.style, { left: `${x - r}px`, top: `${y - r}px`, width: `${r * 2}px`, height: `${r * 2}px` });
+  document.body.append(g);
+}
+function board(x, y, size) {
+  glow(x + size / 2, y + size / 2, size * 0.75);
+  if (spec.board === 'slot') return (window.__slot = { x: Math.round(x), y: Math.round(y), size: Math.round(size) });
+  const c = el('canvas', 'board');
+  const frames = makeFilm();
+  c.width = c.height = Math.round(size);
+  Object.assign(c.style, { left: `${x}px`, top: `${y}px`, width: `${size}px`, height: `${size}px` });
+  drawFrame(c.getContext('2d'), size, frames[heroFrame(frames)]);
+  document.body.append(c);
+}
+function brand(parent, iconPx, wordPx) {
+  const b = el('div', 'brand');
+  const i = img('../../icons/icon.svg');
+  Object.assign(i.style, { width: `${iconPx}px`, height: `${iconPx}px`, marginRight: `${iconPx * 0.32}px` });
+  const word = el('div', 'wordmark', 'CHAIN SHIFT');
+  word.style.fontSize = `${wordPx}px`;
+  b.append(i, word);
+  parent.append(b);
+}
+
+if (spec.kind === 'shot') {
+  const root = el('div', 'shot');
+  const cap = el('div', 'caption');
+  const h1 = el('h1', '', rich(spec.title));
+  const p = el('p', '', spec.sub);
+  const unit = Math.min(w, h * 0.56);
+  h1.style.fontSize = `${unit * 0.078}px`;
+  p.style.fontSize = `${unit * 0.037}px`;
+  cap.style.marginTop = `${h * 0.055}px`;
+  cap.append(h1, p);
+  root.append(cap);
+  document.body.append(root);
+
+  // The device fills what the caption leaves, keeping the screenshot's aspect.
+  const raw = img(spec.img);
+  await raw.decode();
+  const aspect = raw.naturalWidth / raw.naturalHeight;
+  const top = cap.getBoundingClientRect().bottom + h * 0.04;
+  const availH = h - top - h * 0.045;
+  let dh = availH, dw = dh * aspect;
+  const maxW = w * (spec.device === 'tablet' ? 0.86 : 0.8);
+  if (dw > maxW) (dw = maxW), (dh = dw / aspect);
+  const bezel = Math.round(dw * (spec.device === 'tablet' ? 0.018 : 0.03));
+  const radius = dw * (spec.device === 'tablet' ? 0.045 : 0.13);
+  const dev = el('div', 'device');
+  Object.assign(dev.style, { width: `${dw + bezel * 2}px`, height: `${dh + bezel * 2}px`, padding: `${bezel}px`, borderRadius: `${radius}px` });
+  raw.style.borderRadius = `${radius - bezel}px`;
+  dev.append(raw);
+  glow(w / 2, top + dh * 0.55, Math.max(dw, dh) * 0.6);
+  root.append(dev);
+} else {
+  const hero = el('div', 'hero');
+  document.body.append(hero);
+  const text = el('div');
+  Object.assign(text.style, { position: 'absolute' });
+  hero.append(text);
+  const tag = (px, html, mt) => {
+    const t = el('div', 'tagline', rich(html));
+    Object.assign(t.style, { fontSize: `${px}px`, marginTop: `${mt}px` });
+    text.append(t);
+  };
+
+  if (spec.kind === 'header' || spec.kind === 'promo' || spec.kind === 'feature') {
+    // Text left of centre, board right of centre: both stay inside the middle of the frame.
+    // Sizes are designed at the header's 1646 px height; the small feature graphic gets bigger text.
+    const s = (h / 1646) * (spec.kind === 'feature' ? 1.15 : 1);
+    const size = h * ({ feature: 0.84, promo: 0.7 }[spec.kind] ?? 0.8);
+    const gap = spec.kind === 'feature' ? 50 * s : 170 * s;
+    brand(text, 210 * s, 116 * s);
+    tag(84 * s, 'Every move sets off<br>a <em>chain reaction</em>.', 90 * s);
+    if (spec.kind !== 'feature') tag(58 * s, 'One move. Can you find it?', 44 * s);
+    await Promise.all(loads);
+    const tw = text.getBoundingClientRect().width, th = text.getBoundingClientRect().height;
+    const total = tw + gap + size;
+    const x0 = spec.kind === 'feature' ? w * 0.06 : (w - total) / 2;
+    Object.assign(text.style, { left: `${x0}px`, top: `${(h - th) / 2}px` });
+    // The feature graphic lets the board run off the right edge to leave room for the name.
+    const bx = spec.kind === 'feature' ? w - size * 0.88 : x0 + tw + gap;
+    board(bx, (h - size) / 2, size);
+  } else if (spec.kind === 'search') {
+    // One idea, big enough to read in a search result: headline over the board.
+    const head = el('div', 'headline', rich('One move.<br>Can you <em>find it</em>?'));
+    head.style.fontSize = `${h * 0.085}px`;
+    text.append(head);
+    const size = h * 0.66;
+    const gap = w * 0.06;
+    await Promise.all(loads);
+    const tw = text.getBoundingClientRect().width, th = text.getBoundingClientRect().height;
+    const x0 = (w - (tw + gap + size)) / 2;
+    Object.assign(text.style, { left: `${x0}px`, top: `${(h - th) / 2}px` });
+    board(x0 + tw + gap, (h - size) / 2, size);
+  }
+}
+
+await Promise.all(loads);
+await document.fonts.ready;
+window.__ready = true;
+</script>
+</body>
+</html>

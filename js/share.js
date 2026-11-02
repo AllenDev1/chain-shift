@@ -3,6 +3,7 @@
 
 import { drawBoard } from './render.js';
 import { formatCode } from './codec.js';
+import { shareImage } from './native.js';
 
 const W = 1080, H = 1350;
 
@@ -50,9 +51,25 @@ export function makeShareCard({ state, title, headline, code, link }) {
 // Share via the OS sheet when it accepts images; otherwise download the PNG and copy the
 // link. Returns a short status message for the UI.
 export async function shareResult(card, { text, link, filename = 'chain-shift.png' }) {
+  const message = link ? `${text}\n${link}` : text;
+
+  // In the app there's no download fallback: if the sheet fails, copy the link instead.
+  if (shareImage) {
+    try {
+      const base64 = card.toDataURL('image/png').split(',')[1];
+      return (await shareImage({ base64, filename, text: message })) ? 'Shared!' : '';
+    } catch {
+      try {
+        await navigator.clipboard.writeText(message);
+        return 'Couldn’t open sharing. Challenge link copied.';
+      } catch {
+        return 'Couldn’t open sharing.';
+      }
+    }
+  }
+
   const blob = await new Promise((resolve) => card.toBlob(resolve, 'image/png'));
   const file = new File([blob], filename, { type: 'image/png' });
-  const message = link ? `${text}\n${link}` : text;
 
   if (navigator.canShare?.({ files: [file] })) {
     try {

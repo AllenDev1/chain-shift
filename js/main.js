@@ -6,6 +6,8 @@ import { drawBoard, layout, cellAt } from './render.js';
 import { ChainAnimation } from './animate.js';
 import { makeShareCard, shareResult } from './share.js';
 import { UI, TILES } from './icons.js';
+import { isNative, WEB_URL, loadSaved, writeSaved, haptic, launchHash, onLinkOpened } from './native.js';
+import { startAds, adBreak, needsPrivacyOptions, showPrivacyOptions } from './ads.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -20,21 +22,15 @@ const DRAG_COMMIT = 0.4; // release beyond this commits the swipe
 // ---------- persistence ----------
 
 const STORE_KEY = 'chain-shift-v1';
-const store = (() => {
-  const defaults = { levels: {}, daily: {}, helpSeen: false };
+const store = { levels: {}, daily: {}, helpSeen: false };
+async function loadStore() {
   try {
-    return Object.assign(defaults, JSON.parse(localStorage.getItem(STORE_KEY) || '{}'));
+    Object.assign(store, JSON.parse((await loadSaved(STORE_KEY)) || '{}'));
   } catch {
-    return defaults;
+    /* unreadable save: start fresh */
   }
-})();
-const save = () => {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(store));
-  } catch {
-    /* private mode: progress just isn't kept */
-  }
-};
+}
+const save = () => writeSaved(STORE_KEY, JSON.stringify(store));
 
 // ---------- state ----------
 
@@ -79,10 +75,11 @@ let needsDraw = true;
 
 let lastBuzz = 0;
 function buzz(pattern) {
-  if (!navigator.vibrate) return;
+  if (!haptic && !navigator.vibrate) return;
   const now = performance.now();
   if (typeof pattern === 'number' && now - lastBuzz < 45) return;
   lastBuzz = now;
+  if (haptic) return haptic(pattern);
   try {
     navigator.vibrate(pattern);
   } catch {
@@ -93,11 +90,11 @@ function buzz(pattern) {
 // ---------- sizing ----------
 
 // The play area flexes to fill whatever the header and controls leave; the board is
-// the largest square that fits in it above the status line.
+// the largest square that fits in it above the status line. #app's max-width caps it.
 function resize() {
   const status = $('status');
   const statusH = status.offsetParent ? status.offsetHeight + parseFloat(getComputedStyle(status).marginTop) : 0;
-  const size = Math.max(120, Math.floor(Math.min(playArea.clientWidth, playArea.clientHeight - statusH, 560)));
+  const size = Math.max(120, Math.floor(Math.min(playArea.clientWidth, playArea.clientHeight - statusH)));
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   if (size === ui.size && canvas.width === Math.round(size * dpr)) return;
   ui.size = size;
@@ -169,7 +166,7 @@ function updateHud() {
   $('btn-undo').disabled = busy || !game.history.length || game.solved;
   $('btn-reset').disabled = busy || (!game.history.length && !game.awaitingReset && !game.solved);
   $('btn-hint').disabled = busy || game.solved;
-  $('btn-share').classList.toggle('primary', game.solved);
+  $('btn-share').classList.toggle('primary', game.solved && shareFirst(game.meta));
   const cubeLost = !game.solved && !!game.state && !game.state.piece.includes(P.CUBE);
   $('btn-reset').classList.toggle('attention', !busy && (game.awaitingReset || cubeLost));
   renderStatus();
@@ -437,6 +434,11 @@ function recordProgress() {
 
 // ---------- win & share ----------
 
+// Sharing is the point of the Daily and of a friend's challenge. After a level or an endless
+// puzzle the player wants the next one, so Share steps back to a quiet link.
+const shareFirst = (m) => m?.kind === 'daily' || m?.kind === 'custom';
+const BRAG_PAR = 3; // a perfect solve at this par or harder earns a gentle "challenge a friend"
+
 const stars = (moves, par) => (moves <= par ? 3 : moves <= par + 2 ? 2 : 1);
 const oneMoveStars = (tries) => (tries === 1 ? 3 : tries <= 3 ? 2 : 1);
 const starText = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
@@ -447,18 +449,30 @@ function showWin() {
   const n = game.oneMove ? oneMoveStars(game.attempts) : stars(game.moves, game.par);
   const line = game.oneMove ? (game.attempts === 1 ? 'First try' : `${game.attempts} tries`) : `${game.moves} moves · par ${game.par}`;
   $('win-score').innerHTML = `<span class="stars" aria-label="${n} of 3 stars">${starText(n)}</span>${line}`;
-  $('win-sub').textContent = m.kind === 'daily' ? 'A new one-move puzzle arrives tomorrow.' : game.hintsUsed ? `Hints used: ${game.hintsUsed}` : '';
+  const lead = shareFirst(m);
+  const brag = !lead && m.kind !== 'test' && !game.hintsUsed && n === 3 && game.par >= BRAG_PAR;
+  $('win-sub').textContent = m.kind === 'daily' ? 'A new one-move puzzle arrives tomorrow.'
+    : game.hintsUsed ? `Hints used: ${game.hintsUsed}`
+    : brag ? 'Perfect solve. Think a friend can match it?'
+    : '';
   const next = $('win-next');
   if (m.kind === 'level') next.textContent = m.levelIndex + 1 < LEVELS.length ? 'Next level' : 'All levels';
   else if (m.kind === 'endless') next.textContent = 'Next puzzle';
   else if (m.kind === 'test') next.textContent = 'Back to editor';
   else next.textContent = 'More puzzles';
-  $('win-share').hidden = m.kind === 'test';
+  next.classList.toggle('primary', !lead);
+  $('win-share').hidden = !lead;
+  const link = $('win-share-link');
+  link.hidden = lead || m.kind === 'test';
+  link.textContent = brag ? 'Challenge a friend' : 'Share';
+  link.classList.toggle('accent', brag);
+  $('panel-win').classList.toggle('compact', !lead);
   showPanel('panel-win', { soft: true });
 }
 
 function nextAfterWin() {
   const m = game.meta;
+  if (m.kind === 'level' || m.kind === 'endless') adBreak();
   if (m.kind === 'level') {
     if (m.levelIndex + 1 < LEVELS.length) playLevel(m.levelIndex + 1);
     else openLevels();
@@ -468,6 +482,7 @@ function nextAfterWin() {
 }
 
 function shareLink(code) {
+  if (isNative) return `${WEB_URL}#c=${code}`;
   if (location.protocol === 'file:') return '';
   return `${location.origin}${location.pathname}#c=${code}`;
 }
@@ -504,6 +519,7 @@ function openMenu() {
   const done = store.daily[today];
   $('m-daily').textContent = `Daily One-Move #${dailyNumber(today)}${done != null ? '  ✓' : ''}`;
   $('m-close').hidden = !game.start || ui.mode === 'editor';
+  $('m-privacy').hidden = !needsPrivacyOptions();
   showPanel('panel-menu');
 }
 
@@ -827,6 +843,9 @@ $('m-editor').onclick = () => openEditor(game.start && ui.mode !== 'editor' ? ga
 $('m-code').onclick = openCodeEntry;
 $('m-help').onclick = () => showPanel('panel-help');
 $('m-close').onclick = hidePanels;
+$('m-privacy').onclick = showPrivacyOptions;
+// The apps don't bundle the policy page; Capacitor opens the web copy in the browser.
+if (isNative) $('m-policy').href = `${WEB_URL}privacy.html`;
 
 for (const b of document.querySelectorAll('[data-back]')) {
   b.onclick = () => {
@@ -855,6 +874,7 @@ $('code-input').addEventListener('input', () => {
 $('code-input').addEventListener('keydown', (e) => e.key === 'Enter' && $('code-go').click());
 
 $('win-share').onclick = shareCurrent;
+$('win-share-link').onclick = shareCurrent;
 $('win-next').onclick = nextAfterWin;
 $('win-close').onclick = hidePanels;
 
@@ -937,8 +957,8 @@ function frame(now) {
 
 // ---------- boot ----------
 
-function route() {
-  const [key, value = ''] = location.hash.slice(1).split('=');
+function route(hash = location.hash) {
+  const [key, value = ''] = hash.slice(1).split('=');
   if (key === 'l' && LEVELS[Number(value) - 1]) return playLevel(Number(value) - 1);
   if (key === 'd' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return playDaily(value);
   if (key === 'c' && playCode(value)) return;
@@ -952,6 +972,9 @@ function route() {
 buildHelp();
 buildTools();
 resize();
-route();
-window.addEventListener('hashchange', route);
+await loadStore();
+route((await launchHash()) || location.hash);
+window.addEventListener('hashchange', () => route());
+onLinkOpened(route);
 requestAnimationFrame(frame);
+startAds();

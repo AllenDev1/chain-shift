@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Board film</title></head>
+<body>
+<!-- make.mjs reads the board film from here one transparent PNG frame at a time. -->
+<script type="module">
+import { makeFilm, drawFrame } from './film.js';
+
+const frames = makeFilm();
+const canvas = document.createElement('canvas');
+window.__frameCount = frames.length;
+window.__renderFrame = (i, size) => {
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  drawFrame(ctx, size, frames[i]);
+  return canvas.toDataURL('image/png');
+};
+</script>
+</body>
+</html>
