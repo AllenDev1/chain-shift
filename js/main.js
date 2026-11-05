@@ -5,7 +5,7 @@ import { LEVELS } from './levels.js';
 import { drawBoard, layout, cellAt } from './render.js';
 import { ChainAnimation } from './animate.js';
 import { makeShareCard, shareResult } from './share.js';
-import { UI, TILES } from './icons.js';
+import { UI, TILES, STAR, LOGO, stars as starIcons } from './icons.js';
 import { isNative, WEB_URL, loadSaved, writeSaved, haptic, launchHash, onLinkOpened } from './native.js';
 import { startAds, adBreak, needsPrivacyOptions, showPrivacyOptions } from './ads.js';
 
@@ -65,6 +65,8 @@ const ui = {
   flashes: [],
   message: null, // { text, tone }: transient status, cleared by the next action
   busyText: '',
+  lastReach: null, // stars in reach at the last HUD update
+  lostAt: -1, // index of the star that just slipped out of reach
 };
 
 const editor = { state: emptyState(), tool: 'block', painting: false, lastCell: null, message: '' };
@@ -92,12 +94,18 @@ function buzz(pattern) {
 // The play area flexes to fill whatever the header and controls leave; the board is
 // the largest square that fits in it above the status line. #app's max-width caps it.
 function resize() {
-  const status = $('status');
-  const statusH = status.offsetParent ? status.offsetHeight + parseFloat(getComputedStyle(status).marginTop) : 0;
-  const size = Math.max(120, Math.floor(Math.min(playArea.clientWidth, playArea.clientHeight - statusH)));
+  // Everything stacked with the board (scoreboard, status, the tray's edge) comes out first.
+  let extra = parseFloat(getComputedStyle(canvas).marginBottom) || 0;
+  for (const el of playArea.children) {
+    if (el.classList.contains('stage') || !el.offsetParent) continue;
+    const cs = getComputedStyle(el);
+    extra += el.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+  }
+  const size = Math.max(120, Math.floor(Math.min(playArea.clientWidth, playArea.clientHeight - extra)));
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   if (size === ui.size && canvas.width === Math.round(size * dpr)) return;
   ui.size = size;
+  document.documentElement.style.setProperty('--board', `${size}px`);
   canvas.style.width = canvas.style.height = `${size}px`;
   canvas.width = canvas.height = Math.round(size * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -144,19 +152,55 @@ function toast(msg, ms = 2200) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-function updateHud() {
-  const busy = !!ui.anim;
-  if (ui.mode === 'editor') {
-    $('hud-title').textContent = 'Puzzle editor';
-    $('hud-stats').textContent = 'Build · Check · Share';
-    renderStatus();
+// The most stars the player can still earn on this puzzle. An unsolved puzzle needs at least
+// one more move (or one more try), so that is what the meter counts against par.
+function starsInReach() {
+  if (!game.par) return null;
+  const n = (game.oneMove ? game.attempts : game.moves) + (game.solved ? 0 : 1);
+  return game.oneMove ? oneMoveStars(n) : stars(n, game.par);
+}
+
+function reachIcons(n, lostAt = -1) {
+  return Array.from({ length: 3 }, (_, i) => STAR.replace('class="star"', `class="star${i < n ? ' on' : ''}${i === lostAt ? ' lost' : ''}"`)).join('');
+}
+
+function renderScore() {
+  const board = $('scoreboard');
+  if (ui.mode === 'editor' || !game.meta) {
+    board.innerHTML = ui.scoreHtml = '';
+    $('hud-stats').textContent = ui.mode === 'editor' ? 'Build · Check · Share' : '';
     return;
   }
-  $('hud-title').textContent = game.meta?.title || 'Chain Shift';
+  const attempt = game.attempts + (game.solved || game.awaitingReset ? 0 : 1);
+  const [k, v] = game.oneMove ? ['Try', attempt] : ['Moves', game.moves];
+  const over = !game.oneMove && game.par && game.moves > game.par;
+  const reach = starsInReach();
+  // A star slipping out of reach gets a small pop, so the player notices the cost.
+  // The mark stays until the count changes again, so repeated HUD refreshes don't cut it short.
+  if (reach == null || ui.lastReach == null || reach > ui.lastReach) ui.lostAt = -1;
+  else if (reach < ui.lastReach) ui.lostAt = reach;
+  ui.lastReach = reach;
+  const reachHtml = reach == null ? '' : `<div class="score reach" aria-label="${reach} star${reach > 1 ? 's' : ''} still possible"><span class="stars">${reachIcons(reach, ui.lostAt)}</span></div>`;
+  const html =
+    `<div class="score${over ? ' over' : ''}"><span class="k">${k}</span><span class="v">${v}</span></div>` +
+    `<div class="score"><span class="k">Par</span><span class="v">${game.par ?? '?'}</span></div>` + reachHtml;
+  if (ui.scoreHtml !== html) board.innerHTML = ui.scoreHtml = html;
   const sep = ' <span class="sep">·</span> ';
-  $('hud-stats').innerHTML = game.oneMove
-    ? `One move${sep}Attempt <b>${game.attempts + (game.solved || game.awaitingReset ? 0 : 1)}</b>`
-    : `Moves <b>${game.moves}</b>${sep}Par <b>${game.par ?? '?'}</b>`;
+  $('hud-stats').innerHTML = `${k} <b>${v}</b>${sep}Par <b>${game.par ?? '?'}</b>` + (reach == null ? '' : `${sep}<span class="stars">${reachIcons(reach)}</span>`);
+}
+
+function updateHud() {
+  const busy = !!ui.anim;
+  renderScore();
+  if (ui.mode === 'editor') {
+    $('hud-kicker').textContent = 'Editor';
+    $('hud-title').textContent = 'Build a puzzle';
+    renderStatus();
+    resize();
+    return;
+  }
+  $('hud-kicker').textContent = game.meta?.kicker || '';
+  $('hud-title').textContent = game.meta?.name || game.meta?.title || 'Chain Shift';
 
   const test = game.meta?.kind === 'test';
   $('btn-undo').hidden = game.oneMove;
@@ -170,6 +214,7 @@ function updateHud() {
   const cubeLost = !game.solved && !!game.state && !game.state.piece.includes(P.CUBE);
   $('btn-reset').classList.toggle('attention', !busy && (game.awaitingReset || cubeLost));
   renderStatus();
+  resize();
 }
 
 // ---------- sheets (with Back-button support) ----------
@@ -192,6 +237,7 @@ function showPanel(id, { soft = false } = {}) {
   const overlay = $('overlay');
   overlay.hidden = false;
   overlay.classList.toggle('soft', soft);
+  overlay.classList.toggle('full', $(id).classList.contains('page'));
   for (const p of document.querySelectorAll('.panel')) p.hidden = p.id !== id;
   if (!sheetEntry) {
     history.pushState({ sheet: true }, '');
@@ -238,6 +284,7 @@ function loadPuzzle(state, meta) {
   game.awaitingReset = false;
   game.hintsUsed = 0;
   game.code = encode(game.start);
+  ui.lastReach = null;
   game.par = meta.par ?? solve(game.start, { maxDepth: 10, maxStates: 250000 }).moves;
   game.oneMove = game.par === 1;
   ui.anim = null;
@@ -260,7 +307,8 @@ function generating(fn) {
 
 function playLevel(i) {
   const lvl = LEVELS[i];
-  loadPuzzle(decode(lvl.code), { kind: 'level', levelIndex: i, title: `Level ${i + 1} · ${lvl.name}`, tip: lvl.tip, par: lvl.par, hash: `l=${i + 1}` });
+  const kicker = `Level ${i + 1} · ${chapterOf(i).name}`;
+  loadPuzzle(decode(lvl.code), { kind: 'level', levelIndex: i, title: `Level ${i + 1} · ${lvl.name}`, kicker, name: lvl.name, tip: lvl.tip, par: lvl.par, hash: `l=${i + 1}` });
 }
 
 function playDaily(date = todayString()) {
@@ -270,7 +318,8 @@ function playDaily(date = todayString()) {
       ui.busyText = '';
       return say('Couldn’t build that day’s puzzle.', 'bad');
     }
-    loadPuzzle(p.state, { kind: 'daily', date, title: `Daily One-Move #${dailyNumber(date)}`, par: 1, hash: `d=${date}` });
+    const day = new Date(`${date}T12:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    loadPuzzle(p.state, { kind: 'daily', date, title: `Daily One-Move #${dailyNumber(date)}`, kicker: `Daily · ${day}`, name: `One-Move #${dailyNumber(date)}`, par: 1, hash: `d=${date}` });
   });
 }
 
@@ -278,7 +327,7 @@ function playEndless() {
   generating(() => {
     const p = generatePuzzle((Math.random() * 2 ** 32) >>> 0, { cfg: CONFIGS.full, minPar: 2, maxPar: 4 });
     if (!p) return playEndless();
-    loadPuzzle(p.state, { kind: 'endless', title: 'Endless', par: p.par, hash: `c=${encode(p.state)}` });
+    loadPuzzle(p.state, { kind: 'endless', title: 'Endless', kicker: 'Endless', name: 'Fresh puzzle', par: p.par, hash: `c=${encode(p.state)}` });
   });
 }
 
@@ -291,7 +340,7 @@ function extractCode(raw) {
 function playCode(raw) {
   const s = decode(extractCode(raw));
   if (!s || validate(s).length) return false;
-  generating(() => loadPuzzle(s, { kind: 'custom', title: 'Challenge', hash: `c=${encode(s)}` }));
+  generating(() => loadPuzzle(s, { kind: 'custom', title: 'Challenge', kicker: 'Shared puzzle', name: 'Challenge', hash: `c=${encode(s)}` }));
   return true;
 }
 
@@ -441,14 +490,41 @@ const BRAG_PAR = 3; // a perfect solve at this par or harder earns a gentle "cha
 
 const stars = (moves, par) => (moves <= par ? 3 : moves <= par + 2 ? 2 : 1);
 const oneMoveStars = (tries) => (tries === 1 ? 3 : tries <= 3 ? 2 : 1);
-const starText = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
+const levelStars = (i) => {
+  const best = store.levels[i];
+  if (best == null) return 0;
+  return LEVELS[i].par === 1 ? oneMoveStars(best) : stars(best, LEVELS[i].par);
+};
+const nextLevel = () => LEVELS.findIndex((_, i) => store.levels[i] == null);
+
+// Levels are grouped into chapters by the mechanic they introduce. Levels past the last
+// listed chapter fall into a catch-all one.
+const CHAPTERS = [
+  { name: 'Basics', size: 3 },
+  { name: 'Arrows', size: 3 },
+  { name: 'Pits', size: 3 },
+  { name: 'Mastery', size: 3 },
+];
+function chapters() {
+  const out = [];
+  let i = 0;
+  for (const ch of CHAPTERS) {
+    if (i >= LEVELS.length) break;
+    const levels = [];
+    for (let k = 0; k < ch.size && i < LEVELS.length; k++) levels.push(i++);
+    out.push({ name: ch.name, levels });
+  }
+  if (i < LEVELS.length) out.push({ name: 'More', levels: LEVELS.slice(i).map((_, k) => i + k) });
+  return out;
+}
+const chapterOf = (i) => chapters().find((c) => c.levels.includes(i));
 
 function showWin() {
   const m = game.meta;
   $('win-title').textContent = game.oneMove ? 'Found it!' : 'Solved!';
   const n = game.oneMove ? oneMoveStars(game.attempts) : stars(game.moves, game.par);
   const line = game.oneMove ? (game.attempts === 1 ? 'First try' : `${game.attempts} tries`) : `${game.moves} moves · par ${game.par}`;
-  $('win-score').innerHTML = `<span class="stars" aria-label="${n} of 3 stars">${starText(n)}</span>${line}`;
+  $('win-score').innerHTML = `<span class="stars" aria-label="${n} of 3 stars">${starIcons(n)}</span>${line}`;
   const lead = shareFirst(m);
   const brag = !lead && m.kind !== 'test' && !game.hintsUsed && n === 3 && game.par >= BRAG_PAR;
   $('win-sub').textContent = m.kind === 'daily' ? 'A new one-move puzzle arrives tomorrow.'
@@ -517,27 +593,50 @@ async function shareCurrent() {
 function openMenu() {
   const today = todayString();
   const done = store.daily[today];
-  $('m-daily').textContent = `Daily One-Move #${dailyNumber(today)}${done != null ? '  ✓' : ''}`;
+  const num = `#${dailyNumber(today)}`;
+  $('m-daily-sub').innerHTML = done == null ? `${num} · A new puzzle every day`
+    : `${num} · <span class="done">Solved ${done === 1 ? 'first try' : `in ${done} tries`}</span>`;
+  const solved = LEVELS.filter((_, i) => store.levels[i] != null).length;
+  const earned = LEVELS.reduce((sum, _, i) => sum + levelStars(i), 0);
+  $('m-levels-sub').textContent = solved ? `${solved} of ${LEVELS.length} solved · ${earned} of ${LEVELS.length * 3} stars` : `${LEVELS.length} levels · Start here`;
+  $('m-levels-bar').style.width = `${(earned / (LEVELS.length * 3)) * 100}%`;
   $('m-close').hidden = !game.start || ui.mode === 'editor';
   $('m-privacy').hidden = !needsPrivacyOptions();
   showPanel('panel-menu');
 }
 
 function openLevels() {
-  const grid = $('level-grid');
-  grid.innerHTML = '';
-  const next = LEVELS.findIndex((_, i) => store.levels[i] == null);
-  LEVELS.forEach((lvl, i) => {
-    const best = store.levels[i];
-    const b = document.createElement('button');
-    b.className = best != null ? 'done' : i === next ? 'next' : '';
-    const n = best == null ? 0 : lvl.par === 1 ? oneMoveStars(best) : stars(best, lvl.par);
-    b.innerHTML = `<span class="num">${i + 1}</span><span class="stars">${n ? starText(n) : ''}</span>`;
-    b.setAttribute('aria-label', `Level ${i + 1}, ${lvl.name}${n ? `, ${n} stars` : ''}`);
-    b.onclick = () => playLevel(i);
-    grid.append(b);
-  });
+  const wrap = $('level-grid');
+  wrap.innerHTML = '';
+  const next = nextLevel();
+  let total = 0;
+  for (const ch of chapters()) {
+    const sec = document.createElement('section');
+    sec.className = 'chapter';
+    const grid = document.createElement('div');
+    grid.className = 'level-grid';
+    let earned = 0;
+    for (const i of ch.levels) {
+      const lvl = LEVELS[i];
+      const n = levelStars(i);
+      earned += n;
+      const b = document.createElement('button');
+      b.className = i === next ? 'next' : store.levels[i] != null ? 'done' : 'fresh';
+      b.innerHTML = `<span class="num">${i + 1}</span><span class="name">${lvl.name}</span><span class="stars">${starIcons(n)}</span>`;
+      b.setAttribute('aria-label', `Level ${i + 1}, ${lvl.name}${n ? `, ${n} stars` : ''}`);
+      b.onclick = () => playLevel(i);
+      grid.append(b);
+    }
+    total += earned;
+    const head = document.createElement('div');
+    head.className = 'chapter-head';
+    head.innerHTML = `<h3>${ch.name}</h3><span>${earned} / ${ch.levels.length * 3} stars</span>`;
+    sec.append(head, grid);
+    wrap.append(sec);
+  }
+  $('levels-stars').innerHTML = `${STAR}<span>${total}</span>`;
   showPanel('panel-levels');
+  wrap.querySelector('.next')?.scrollIntoView({ block: 'center' });
 }
 
 function openCodeEntry() {
@@ -827,6 +926,8 @@ for (const b of document.querySelectorAll('[data-icon]')) {
 }
 $('btn-menu').innerHTML = UI.menu;
 $('btn-help').innerHTML = UI.help;
+for (const el of document.querySelectorAll('[data-ui]')) el.innerHTML = UI[el.dataset.ui];
+$('m-logo').innerHTML = LOGO;
 
 $('btn-menu').onclick = openMenu;
 $('btn-help').onclick = () => showPanel('panel-help');
@@ -886,7 +987,7 @@ $('ed-solve').onclick = () => checkEditor();
 $('ed-play').onclick = () => {
   const problems = validate(editor.state);
   if (problems.length) return editorSay(problems.join(' '));
-  loadPuzzle(editor.state, { kind: 'test', title: 'Testing your puzzle', hash: `e=${encode(editor.state)}` });
+  loadPuzzle(editor.state, { kind: 'test', title: 'Testing your puzzle', kicker: 'Editor', name: 'Test play', hash: `e=${encode(editor.state)}` });
 };
 $('ed-share').onclick = () =>
   checkEditor(async (r) => {
@@ -964,7 +1065,7 @@ function route(hash = location.hash) {
   if (key === 'c' && playCode(value)) return;
   if (key === 'e') return openEditor(decode(value) || emptyState());
   // No (valid) link: newcomers start at level 1, returning players at their next level.
-  const next = LEVELS.findIndex((_, i) => store.levels[i] == null);
+  const next = nextLevel();
   playLevel(next < 0 ? LEVELS.length - 1 : next);
   if (!store.helpSeen) showPanel('panel-help');
 }

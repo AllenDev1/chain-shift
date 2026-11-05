@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f1020">
-  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#f4efe6">
+  <meta name="color-scheme" content="light">
   <meta name="description" content="Every move triggers a chain reaction. Predict where everything stops.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Chain Shift">
   <meta name="format-detection" content="telephone=no">
   <title>Chain Shift</title>
@@ -22,13 +22,16 @@
     <header class="topbar">
       <button class="icon-btn" id="btn-menu" aria-label="Menu"></button>
       <div class="hud" aria-live="polite">
+        <div class="hud-kicker" id="hud-kicker">&nbsp;</div>
         <div class="hud-title" id="hud-title">Chain Shift</div>
+        <!-- Landscape only: the scoreboard's compact twin. -->
         <div class="hud-stats" id="hud-stats">&nbsp;</div>
       </div>
       <button class="icon-btn" id="btn-help" aria-label="How to play"></button>
     </header>
 
     <div class="play-area" id="play-area">
+      <div class="scoreboard" id="scoreboard" aria-live="polite"></div>
       <div class="stage">
         <canvas id="board" aria-label="Puzzle board" tabindex="0"></canvas>
       </div>
@@ -39,49 +42,70 @@
     <p class="status side" id="status-side" aria-live="polite"></p>
 
     <nav class="controls" id="controls" aria-label="Game controls">
-      <button id="btn-undo" data-icon="undo">Undo</button>
-      <button id="btn-reset" data-icon="reset">Reset</button>
-      <button id="btn-hint" data-icon="hint">Hint</button>
-      <button id="btn-share" data-icon="share">Share</button>
-      <button id="btn-back-editor" data-icon="back" hidden>Edit</button>
+      <button class="key" id="btn-undo" data-icon="undo">Undo</button>
+      <button class="key" id="btn-reset" data-icon="reset">Reset</button>
+      <button class="key" id="btn-hint" data-icon="hint">Hint</button>
+      <button class="key" id="btn-share" data-icon="share">Share</button>
+      <button class="key" id="btn-back-editor" data-icon="back" hidden>Edit</button>
     </nav>
 
     <nav class="editor-bar" id="editor-bar" aria-label="Editor" hidden>
       <div class="tools" id="tools" role="radiogroup" aria-label="Paint tool"></div>
       <div class="editor-actions">
-        <button id="ed-clear" data-icon="clear">Clear</button>
-        <button id="ed-solve" data-icon="check">Check</button>
-        <button id="ed-play" data-icon="play">Play</button>
-        <button id="ed-share" data-icon="share">Share</button>
+        <button class="key" id="ed-clear" data-icon="clear">Clear</button>
+        <button class="key" id="ed-solve" data-icon="check">Check</button>
+        <button class="key" id="ed-play" data-icon="play">Play</button>
+        <button class="key" id="ed-share" data-icon="share">Share</button>
       </div>
     </nav>
   </main>
 
   <div class="overlay" id="overlay" hidden>
-    <section class="panel" id="panel-menu" role="dialog" aria-label="Menu" hidden>
-      <h2 class="wordmark">CHAIN SHIFT</h2>
-      <p class="tagline">Every move sets off a chain reaction.<br>Predict where everything stops.</p>
-      <div class="menu-list">
-        <button class="primary big" id="m-daily">Daily One-Move</button>
-        <button class="big" id="m-levels">Levels</button>
-        <button class="big" id="m-endless">Endless</button>
-        <div class="menu-row">
-          <button class="big" id="m-editor">Editor</button>
-          <button class="big" id="m-code">Enter code</button>
+    <section class="panel page" id="panel-menu" role="dialog" aria-label="Menu" hidden>
+      <div class="page-bar">
+        <span></span>
+        <button class="icon-btn" id="m-close" aria-label="Back to puzzle" data-ui="close" hidden></button>
+      </div>
+      <div class="brand">
+        <div id="m-logo"></div>
+        <h2 class="wordmark">Chain Shift</h2>
+        <p class="tagline">Every move sets off a chain reaction. Predict where everything stops.</p>
+      </div>
+      <div class="modes">
+        <button class="mode feature" id="m-daily">
+          <span class="mode-icon" data-ui="calendar"></span>
+          <span class="mode-text"><span class="mode-name">Daily One-Move</span><span class="mode-sub" id="m-daily-sub"></span></span>
+          <span class="mode-go" data-ui="next"></span>
+        </button>
+        <button class="mode" id="m-levels">
+          <span class="mode-icon" data-ui="grid"></span>
+          <span class="mode-text"><span class="mode-name">Levels</span><span class="mode-sub" id="m-levels-sub"></span><span class="meter"><span id="m-levels-bar"></span></span></span>
+          <span class="mode-go" data-ui="next"></span>
+        </button>
+        <button class="mode" id="m-endless">
+          <span class="mode-icon" data-ui="endless"></span>
+          <span class="mode-text"><span class="mode-name">Endless</span><span class="mode-sub">Fresh puzzles, par 2–4</span></span>
+          <span class="mode-go" data-ui="next"></span>
+        </button>
+        <div class="mode-row">
+          <button class="mode small" id="m-editor"><span class="mode-icon" data-ui="edit"></span><span class="mode-name">Editor</span></button>
+          <button class="mode small" id="m-code"><span class="mode-icon" data-ui="code"></span><span class="mode-name">Enter code</span></button>
         </div>
       </div>
       <div class="sheet-footer">
         <button class="link" id="m-help">How to play</button>
         <button class="link" id="m-privacy" hidden>Privacy settings</button>
         <a class="link" id="m-policy" href="privacy.html" target="_blank" rel="noopener">Privacy policy</a>
-        <button class="link" id="m-close" hidden>Back to puzzle</button>
       </div>
     </section>
 
-    <section class="panel" id="panel-levels" role="dialog" aria-label="Levels" hidden>
-      <h2>Levels</h2>
-      <div class="level-grid" id="level-grid"></div>
-      <div class="sheet-footer"><button class="link" data-back>Back</button></div>
+    <section class="panel page" id="panel-levels" role="dialog" aria-label="Levels" hidden>
+      <div class="page-bar">
+        <button class="icon-btn" data-back data-ui="back" aria-label="Back"></button>
+        <h2>Levels</h2>
+        <span class="page-stat" id="levels-stars"></span>
+      </div>
+      <div class="chapters" id="level-grid"></div>
     </section>
 
     <section class="panel" id="panel-code" role="dialog" aria-label="Enter a challenge code" hidden>
