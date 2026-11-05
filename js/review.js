@@ -59,7 +59,7 @@ export async function maybeAskForReview(r, moment) {
 
 // The App Store's numeric Apple ID for Chain Shift (App Store Connect → App Information →
 // Apple ID). Until it's set, the menu's "Rate Chain Shift" link is hidden on iOS.
-export const APP_STORE_ID = '';
+export const APP_STORE_ID = '6767428876';
 
 // Where the menu's "Rate Chain Shift" link goes: the store's write-a-review page. The player
 // chooses to open it, so it has no limits. Null on the web.
