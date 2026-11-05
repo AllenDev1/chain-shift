@@ -84,7 +84,7 @@
         </button>
         <button class="mode" id="m-endless">
           <span class="mode-icon" data-ui="endless"></span>
-          <span class="mode-text"><span class="mode-name">Endless</span><span class="mode-sub">Fresh puzzles, par 2–4</span></span>
+          <span class="mode-text"><span class="mode-name">Endless</span><span class="mode-sub" id="m-endless-sub"></span></span>
           <span class="mode-go" data-ui="next"></span>
         </button>
         <div class="mode-row">
@@ -107,6 +107,13 @@
         <span class="page-stat" id="levels-stars"></span>
       </div>
       <div class="chapters" id="level-grid"></div>
+    </section>
+
+    <section class="panel" id="panel-endless" role="dialog" aria-label="Endless" hidden>
+      <h2>Endless</h2>
+      <p class="muted">Fresh puzzles, made on the spot. How hard?</p>
+      <div class="menu-list" id="endless-tiers"></div>
+      <div class="sheet-footer"><button class="link" data-back>Back</button></div>
     </section>
 
     <section class="panel" id="panel-code" role="dialog" aria-label="Enter a challenge code" hidden>

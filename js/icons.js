@@ -27,6 +27,8 @@ export const UI = {
   code: stroke('<path d="M9 4 7 20M17 4l-2 16M4.5 9h16M3.5 15h16"/>'),
 };
 
+export const LOCK = stroke('<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>');
+
 // Filled star; colour comes from CSS (.star.on / .star).
 export const STAR = svg('<path d="M12 2.8l2.75 5.6 6.15.9-4.45 4.33 1.05 6.12L12 16.87l-5.5 2.88 1.05-6.12L3.1 9.3l6.15-.9z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>', 'star');
 export const stars = (n, of = 3) =>
