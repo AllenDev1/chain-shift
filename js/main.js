@@ -7,7 +7,8 @@ import { ChainAnimation } from './animate.js';
 import { makeShareCard, shareResult } from './share.js';
 import { UI, TILES, STAR, LOGO, stars as starIcons } from './icons.js';
 import { isNative, WEB_URL, loadSaved, writeSaved, haptic, launchHash, onLinkOpened } from './native.js';
-import { startAds, adBreak, needsPrivacyOptions, showPrivacyOptions } from './ads.js';
+import { startAds, adBreak, deferAds, needsPrivacyOptions, showPrivacyOptions } from './ads.js';
+import { newRecord, countSolve, maybeAskForReview, storeReviewUrl } from './review.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -22,10 +23,18 @@ const DRAG_COMMIT = 0.4; // release beyond this commits the swipe
 // ---------- persistence ----------
 
 const STORE_KEY = 'chain-shift-v1';
-const store = { levels: {}, daily: {}, helpSeen: false };
+const store = { levels: {}, daily: {}, helpSeen: false, review: newRecord() };
 async function loadStore() {
   try {
-    Object.assign(store, JSON.parse((await loadSaved(STORE_KEY)) || '{}'));
+    const saved = JSON.parse((await loadSaved(STORE_KEY)) || '{}');
+    Object.assign(store, saved);
+    // Saves from before review tracking: credit the progress already made. Each Daily
+    // solved is its own day.
+    if (!saved.review) {
+      const dailies = Object.keys(store.daily).length;
+      store.review.solves = Object.keys(store.levels).length + dailies;
+      store.review.days = dailies;
+    }
   } catch {
     /* unreadable save: start fresh */
   }
@@ -418,6 +427,7 @@ function onChainFinished() {
 
   if (r.outcome === 'win') {
     game.solved = true;
+    if (game.meta.kind !== 'test') countSolve(store.review, todayString());
     recordProgress();
     say(game.oneMove ? 'Found it!' : 'Solved!', 'good');
     buzz([12, 50, 28]);
@@ -548,13 +558,25 @@ function showWin() {
 
 function nextAfterWin() {
   const m = game.meta;
-  if (m.kind === 'level' || m.kind === 'endless') adBreak();
+  // Read before the next puzzle replaces the game state.
+  const n = game.oneMove ? oneMoveStars(game.attempts) : stars(game.moves, game.par);
+  const moment = { stars: n, hints: game.hintsUsed, adShown: false };
+  if (m.kind === 'level' || m.kind === 'endless') moment.adShown = adBreak();
   if (m.kind === 'level') {
     if (m.levelIndex + 1 < LEVELS.length) playLevel(m.levelIndex + 1);
     else openLevels();
   } else if (m.kind === 'endless') playEndless();
   else if (m.kind === 'test') openEditor(game.start);
   else openMenu();
+  // The player has just finished a puzzle and chosen to move on: the one moment a rating
+  // prompt may appear. Only for our own puzzles, not a friend's code or the editor.
+  if (m.kind === 'level' || m.kind === 'endless' || m.kind === 'daily') {
+    maybeAskForReview(store.review, moment).then((asked) => {
+      if (!asked) return;
+      save();
+      deferAds();
+    });
+  }
 }
 
 function shareLink(code) {
@@ -947,6 +969,11 @@ $('m-close').onclick = hidePanels;
 $('m-privacy').onclick = showPrivacyOptions;
 // The apps don't bundle the policy page; Capacitor opens the web copy in the browser.
 if (isNative) $('m-policy').href = `${WEB_URL}privacy.html`;
+const rateUrl = storeReviewUrl();
+if (rateUrl) {
+  $('m-rate').href = rateUrl;
+  $('m-rate').hidden = false;
+}
 
 for (const b of document.querySelectorAll('[data-back]')) {
   b.onclick = () => {
