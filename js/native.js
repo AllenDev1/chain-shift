@@ -56,6 +56,14 @@ export const haptic = Haptics && ((pattern) => {
   p.catch(() => {});
 });
 
+// ---------- status bar ----------
+
+const SystemBars = plugin('SystemBars');
+// Status bar text and icons: dark on the light theme, light on the dark one.
+export function setSystemBarsTheme(theme) {
+  SystemBars?.setStyle({ style: theme === 'dark' ? 'DARK' : 'LIGHT' }).catch(() => {});
+}
+
 // ---------- sharing ----------
 
 // The web view can't hand a File to the share sheet, so the card is written to the cache

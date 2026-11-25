@@ -3,28 +3,73 @@
 // Art direction: a tabletop tray. The board is a sand-coloured tray of inlaid tiles,
 // pieces are solid extruded tiles (a top face over a darker side), walls are raised
 // parts of the tray itself, and the cube is the one signal-red piece. Its white ring
-// lines up with the ring printed on the target. No glows, no gloss.
+// lines up with the ring printed on the target. No glows, no gloss. Motion is quiet: the
+// target breathes and sends out a ping, and a new puzzle's pieces pop in.
 
 import { SIZE, F, P, DIRS, idx, isArrow, arrowDir } from './engine.js';
 
 export const FONT = "ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
-export const COLORS = {
-  tray: '#d8cdb9',
-  cell: '#e6ddcc',
-  wallTop: '#bcae96',
-  wallSide: '#9c8d75',
-  pit: '#2b241f',
-  pitRim: '#7a6a58',
-  arrow: '#a6977e',
+// Two palettes: daylight tabletop and the same table at night. The pieces (blocks, cube,
+// target) keep their colours in both, so a puzzle reads the same either way.
+const PIECES = {
   target: '#f0532f',
   cube: '#f0532f',
-  ink: '#1e1b26',
-  muted: '#8a8070',
-  bad: '#d23f27',
-  impact: '#1e1b26',
   blocks: ['#3f6fe0', '#2ea37c', '#ebb23a', '#8c62d0', '#de6fa1', '#56627a'],
 };
+const PALETTES = {
+  light: {
+    ...PIECES,
+    tray: '#d8cdb9',
+    cell: '#e6ddcc',
+    wallTop: '#bcae96',
+    wallSide: '#9c8d75',
+    pit: '#2b241f',
+    pitDeep: '#0f0c0a',
+    pitRim: '#7a6a58',
+    arrow: '#a6977e',
+    ink: '#1e1b26', // outlines, handles, the impact badge
+    onInk: '#fffdf8', // drawn on top of ink
+    halo: 'rgba(255, 253, 248, 0.85)',
+    trail: 'rgba(30, 27, 38, 0.08)',
+    trailDots: 'rgba(30, 27, 38, 0.6)',
+    shadow: 'rgba(70, 50, 25, 0.28)',
+    muted: '#8a8070',
+    bad: '#d23f27',
+    impact: '#1e1b26',
+  },
+  dark: {
+    ...PIECES,
+    tray: '#2b2721',
+    cell: '#39332b',
+    wallTop: '#615747',
+    wallSide: '#463e33',
+    pit: '#0c0a08',
+    pitDeep: '#000000',
+    pitRim: '#4d4438',
+    arrow: '#7f735f',
+    ink: '#f1ebe0',
+    onInk: '#1c1a17',
+    halo: 'rgba(28, 26, 23, 0.85)',
+    trail: 'rgba(241, 235, 224, 0.09)',
+    trailDots: 'rgba(241, 235, 224, 0.65)',
+    shadow: 'rgba(0, 0, 0, 0.5)',
+    muted: '#8a8070',
+    bad: '#ff6a50',
+    impact: '#f1ebe0',
+  },
+};
+
+// The live palette. Drawing code reads it on every frame, so switching is instant.
+export const COLORS = { ...PALETTES.light };
+let palette = 'light';
+// Returns the previous palette's name, so a caller can switch back.
+export function setPalette(name) {
+  const prev = palette;
+  Object.assign(COLORS, PALETTES[name] || PALETTES.light);
+  palette = name;
+  return prev;
+}
 
 export const blockColor = (id) => COLORS.blocks[(id - 1) % COLORS.blocks.length];
 
@@ -121,7 +166,7 @@ function drawFloor(ctx, L, s, x, y, time) {
     ctx.save();
     ctx.clip();
     const g = ctx.createLinearGradient(0, hy + wall, 0, hy + hh);
-    g.addColorStop(0, '#0f0c0a');
+    g.addColorStop(0, COLORS.pitDeep);
     g.addColorStop(1, COLORS.pit);
     roundRect(ctx, hx - 1, hy + wall, hw + 2, hh, hw * 0.32);
     ctx.fillStyle = g;
@@ -129,14 +174,15 @@ function drawFloor(ctx, L, s, x, y, time) {
     ctx.restore();
   } else if (f === F.TARGET) {
     const c = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-    const pulse = 0.5 + 0.5 * Math.sin(time / 420);
+    // Breathes: the halo swells and the ring brightens, about once every two seconds.
+    const pulse = time ? 0.5 + 0.5 * Math.sin(time / 320) : 1;
     ctx.save();
-    ctx.fillStyle = 'rgba(240, 83, 47, 0.13)';
+    ctx.fillStyle = `rgba(240, 83, 47, ${0.1 + 0.1 * pulse})`;
     ctx.beginPath();
-    ctx.arc(c.x, c.y, r.w * 0.36, 0, Math.PI * 2);
+    ctx.arc(c.x, c.y, r.w * (0.33 + 0.05 * pulse), 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = COLORS.target;
-    ctx.globalAlpha = 0.75 + 0.25 * pulse;
+    ctx.globalAlpha = 0.6 + 0.4 * pulse;
     ctx.lineWidth = L.cell * 0.065;
     ctx.beginPath();
     ctx.arc(c.x, c.y, r.w * 0.24, 0, Math.PI * 2);
@@ -160,7 +206,7 @@ function pieceBox(L, px, py, scale) {
 function withShadow(ctx, L, alpha, fn) {
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.shadowColor = 'rgba(70, 50, 25, 0.28)';
+  ctx.shadowColor = COLORS.shadow;
   ctx.shadowBlur = L.cell * 0.1;
   ctx.shadowOffsetY = L.cell * 0.05;
   fn();
@@ -206,6 +252,35 @@ function drawCube(ctx, L, px, py, alpha = 1, scale = 1) {
   });
 }
 
+// A ring that spreads out from the target and fades, like a sonar ping. Drawn after the
+// floor and before the pieces, so it passes under anything standing nearby.
+const PING_MS = 1800;
+function drawTargetPing(ctx, L, s, time) {
+  const t = s.floor.indexOf(F.TARGET);
+  if (t < 0) return;
+  const c = centre(L, { x: t % SIZE, y: (t / SIZE) | 0 });
+  const k = (time % PING_MS) / PING_MS;
+  const grow = 1 - (1 - k) ** 3;
+  ctx.save();
+  ctx.globalAlpha = 0.5 * (1 - k) ** 1.5;
+  ctx.strokeStyle = COLORS.target;
+  ctx.lineWidth = L.cell * 0.05 * (1 - 0.5 * k);
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, L.cell * (0.22 + 0.4 * grow), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Puzzle intro: pieces pop in as a wave from the top-left corner.
+const INTRO_STAGGER = 35, INTRO_POP = 300;
+export const INTRO_MS = INTRO_STAGGER * (SIZE - 1) * 2 + INTRO_POP;
+const backOut = (t) => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 * (t - 1) ** 2;
+function introPop(intro, x, y) {
+  if (intro == null) return { alpha: 1, scale: 1 };
+  const t = Math.min(1, Math.max(0, (intro - (x + y) * INTRO_STAGGER) / INTRO_POP));
+  return { alpha: Math.min(1, t * 2.5), scale: 0.5 + 0.5 * backOut(t) };
+}
+
 // The target ring, drawn over a block that covers it: signal red with a light halo, so it
 // reads on every block colour and never looks like the cube (red tile, white ring).
 function drawTargetMark(ctx, L, x, y) {
@@ -243,12 +318,12 @@ function drawPreview(ctx, L, s, preview, origin) {
   for (const p of preview.path) {
     const r = cellRect(L, p.x, p.y);
     roundRect(ctx, r.x, r.y, r.w, r.h, L.cell * 0.13);
-    ctx.fillStyle = 'rgba(30, 27, 38, 0.08)';
+    ctx.fillStyle = COLORS.trail;
     ctx.fill();
   }
   // Dotted trail from the swiped block to where it stops.
   const pts = [origin, ...preview.path].map((p) => centre(L, p));
-  ctx.strokeStyle = 'rgba(30, 27, 38, 0.6)';
+  ctx.strokeStyle = COLORS.trailDots;
   ctx.lineWidth = L.cell * 0.05;
   ctx.setLineDash([0.01, L.cell * 0.13]);
   ctx.lineCap = 'round';
@@ -285,7 +360,7 @@ function drawImpact(ctx, L, preview) {
   ctx.beginPath();
   ctx.arc(bx, by, br, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = COLORS.onInk;
   ctx.font = `800 ${L.cell * 0.24}px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -302,19 +377,19 @@ function drawHandles(ctx, L, sel, { dirs, active }) {
     const r = L.cell * 0.22;
     const on = d === active;
     ctx.save();
-    ctx.shadowColor = 'rgba(70, 50, 25, 0.3)';
+    ctx.shadowColor = COLORS.shadow;
     ctx.shadowBlur = L.cell * 0.1;
     ctx.shadowOffsetY = L.cell * 0.03;
     // A light halo lifts the handle off whatever piece it sits on.
     ctx.beginPath();
     ctx.arc(cx, cy, r + L.cell * 0.035, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 253, 248, 0.85)';
+    ctx.fillStyle = COLORS.halo;
     ctx.fill();
     ctx.shadowColor = 'transparent';
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     // Ink by default so a handle reads over any piece, the cube's white ring included.
-    ctx.fillStyle = on ? '#fffdf8' : COLORS.ink;
+    ctx.fillStyle = on ? COLORS.onInk : COLORS.ink;
     ctx.fill();
     ctx.shadowColor = 'transparent';
     if (on) {
@@ -324,7 +399,7 @@ function drawHandles(ctx, L, sel, { dirs, active }) {
     }
     ctx.translate(cx, cy);
     ctx.rotate((d * Math.PI) / 2);
-    ctx.strokeStyle = on ? COLORS.ink : '#fffdf8';
+    ctx.strokeStyle = on ? COLORS.ink : COLORS.onInk;
     ctx.lineWidth = L.cell * 0.055;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -362,7 +437,8 @@ function outline(ctx, L, cell, alpha = 1) {
   ctx.restore();
 }
 
-// view: { state, display?, preview?, origin?, selected?, handles?, hint?, nudge?, flashes?, time, still?, shake? }
+// view: { state, display?, preview?, origin?, selected?, handles?, hint?, nudge?, flashes?, intro?, time, still?, shake? }
+// intro: ms since the puzzle appeared, while its pieces are still popping in.
 // `display` (Map id → {x, y, kind, alpha, scale}) overrides piece positions during animation.
 export function drawBoard(ctx, size, view) {
   const L = layout(size);
@@ -377,6 +453,7 @@ export function drawBoard(ctx, size, view) {
   // Pulses freeze when the player prefers reduced motion.
   const pulse = view.still ? 0 : time;
   for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) drawFloor(ctx, L, s, x, y, pulse);
+  if (!view.still) drawTargetPing(ctx, L, s, time);
 
   if (view.hint) {
     outline(ctx, L, view.hint, view.still ? 1 : 0.55 + 0.45 * Math.sin(time / 160));
@@ -398,8 +475,10 @@ export function drawBoard(ctx, size, view) {
     for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
       const i = idx(x, y);
       const on = n && n.x === x && n.y === y;
-      if (s.piece[i] === P.BLOCK) drawBlock(ctx, L, x + (on ? n.ox : 0), y + (on ? n.oy : 0), s.ids[i]);
-      else if (s.piece[i] === P.CUBE) drawCube(ctx, L, x, y);
+      const { alpha, scale } = introPop(view.intro, x, y);
+      if (!alpha) continue;
+      if (s.piece[i] === P.BLOCK) drawBlock(ctx, L, x + (on ? n.ox : 0), y + (on ? n.oy : 0), s.ids[i], alpha, scale);
+      else if (s.piece[i] === P.CUBE) drawCube(ctx, L, x, y, alpha, scale);
     }
   }
 

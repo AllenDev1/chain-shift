@@ -3,11 +3,11 @@ import { encode, decode, formatCode } from './codec.js';
 import { CONFIGS, generateDaily, generatePuzzle, todayString, dailyNumber } from './generator.js';
 import { LEVELS, CHAPTERS } from './levels.js';
 import { TIER_NAMES, chainLength } from './difficulty.js';
-import { drawBoard, layout, cellAt } from './render.js';
+import { drawBoard, layout, cellAt, setPalette, INTRO_MS } from './render.js';
 import { ChainAnimation } from './animate.js';
 import { makeShareCard, shareResult } from './share.js';
 import { UI, TILES, STAR, LOGO, LOCK, stars as starIcons } from './icons.js';
-import { isNative, WEB_URL, loadSaved, writeSaved, haptic, launchHash, onLinkOpened } from './native.js';
+import { isNative, WEB_URL, loadSaved, writeSaved, haptic, launchHash, onLinkOpened, setSystemBarsTheme } from './native.js';
 import { startAds, adBreak, deferAds, needsPrivacyOptions, showPrivacyOptions } from './ads.js';
 import { newRecord, countSolve, maybeAskForReview, storeReviewUrl } from './review.js';
 
@@ -26,7 +26,7 @@ const DRAG_COMMIT = 0.4; // release beyond this commits the swipe
 const STORE_KEY = 'chain-shift-v1';
 // best: fewest moves (or tries) per level, keyed by the level's puzzle code. 1.0 saved
 // `levels` by position instead; it is migrated once and then left alone.
-const store = { levels: {}, best: {}, daily: {}, endless: 'medium', helpSeen: false, review: newRecord() };
+const store = { levels: {}, best: {}, daily: {}, endless: 'medium', helpSeen: false, review: newRecord(), theme: 'auto' };
 
 // The 1.0 campaign, in its order, so old position-keyed saves can be mapped to codes.
 const LEGACY_CODES = [
@@ -113,6 +113,31 @@ function buzz(pattern) {
     /* not allowed before a user gesture */
   }
 }
+
+// ---------- button presses ----------
+
+// iOS web views skip :active on quick taps, so buttons get a .pressed class from pointer
+// events instead, held long enough to see. The tick comes on click, so scrolling a list
+// that started on a button doesn't buzz.
+const PRESSABLE = 'button, a.link';
+const MIN_PRESS_MS = 90;
+document.addEventListener('pointerdown', (e) => {
+  const el = e.target.closest?.(PRESSABLE);
+  if (!el || el.disabled) return;
+  const t0 = performance.now();
+  el.classList.add('pressed');
+  const release = () => {
+    document.removeEventListener('pointerup', release, true);
+    document.removeEventListener('pointercancel', release, true);
+    setTimeout(() => el.classList.remove('pressed'), Math.max(0, MIN_PRESS_MS - (performance.now() - t0)));
+  };
+  document.addEventListener('pointerup', release, true);
+  document.addEventListener('pointercancel', release, true);
+}, { capture: true, passive: true });
+document.addEventListener('click', (e) => {
+  const el = e.target.closest?.(PRESSABLE);
+  if (el && !el.disabled) buzz(5);
+}, { capture: true, passive: true });
 
 // ---------- sizing ----------
 
@@ -315,6 +340,7 @@ function loadPuzzle(state, meta) {
   ui.anim = null;
   ui.message = null;
   ui.busyText = '';
+  ui.introAt = reduceMotion.matches ? 0 : performance.now();
   clearSelection();
   setMode('play');
   hidePanels();
@@ -601,7 +627,6 @@ function showWin() {
   link.hidden = lead || m.kind === 'test';
   link.textContent = brag ? 'Challenge a friend' : 'Share';
   link.classList.toggle('accent', brag);
-  $('panel-win').classList.toggle('compact', !lead);
   showPanel('panel-win', { soft: true });
 }
 
@@ -875,6 +900,7 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
 
+  ui.introAt = 0; // touching the board skips the intro
   if (ui.anim) return ui.anim.finish();
   if (game.awaitingReset) return reset();
   if (game.solved || !game.state) return;
@@ -1035,6 +1061,11 @@ $('m-endless').onclick = openEndless;
 $('m-editor').onclick = () => openEditor(game.start && ui.mode !== 'editor' ? game.start : null);
 $('m-code').onclick = openCodeEntry;
 $('m-help').onclick = () => showPanel('panel-help');
+$('m-theme').onclick = () => {
+  store.theme = THEMES[(THEMES.indexOf(store.theme) + 1) % THEMES.length];
+  save();
+  applyTheme();
+};
 $('m-close').onclick = hidePanels;
 $('m-privacy').onclick = showPrivacyOptions;
 // The apps don't bundle the policy page; Capacitor opens the web copy in the browser.
@@ -1126,8 +1157,11 @@ function frame(now) {
   if (ui.anim && ui.anim.update(dt)) onChainFinished();
   ui.flashes = ui.flashes.filter((f) => now - f.born < 400);
 
+  if (ui.introAt && now - ui.introAt > INTRO_MS) ui.introAt = 0;
+  const intro = ui.introAt && ui.mode === 'play' ? Math.max(0, now - ui.introAt) : null;
+
   // Idle screens only have slow pulses: redraw at ~30fps to save battery.
-  const active = ui.anim || ui.press || ui.bump || ui.flashes.length;
+  const active = ui.anim || ui.press || ui.bump || ui.flashes.length || intro != null;
   if (!active && !needsDraw && now - lastDraw < 33) return;
   needsDraw = false;
   lastDraw = now;
@@ -1147,11 +1181,40 @@ function frame(now) {
       hint: ui.hint,
       nudge: nudgeFor(now),
       flashes: ui.flashes,
+      intro,
       time: now,
       still: reduceMotion.matches,
     });
   }
 }
+
+// ---------- theme ----------
+
+// Auto follows the system. The choice is also mirrored to its own localStorage key, which
+// the inline script in index.html reads to pick the theme before the first paint.
+const THEMES = ['auto', 'dark', 'light'];
+const THEME_NAMES = { auto: 'Auto', dark: 'Dark', light: 'Light' };
+const THEME_KEY = 'chain-shift-theme';
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+
+function applyTheme() {
+  if (!THEMES.includes(store.theme)) store.theme = 'auto';
+  const dark = store.theme === 'dark' || (store.theme === 'auto' && darkQuery.matches);
+  const theme = dark ? 'dark' : 'light';
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--paper').trim();
+  setPalette(theme);
+  setSystemBarsTheme(theme);
+  $('m-theme').textContent = `Appearance: ${THEME_NAMES[store.theme]}`;
+  try {
+    localStorage.setItem(THEME_KEY, store.theme);
+  } catch {
+    /* private mode: Auto next time */
+  }
+  needsDraw = true;
+}
+darkQuery.addEventListener('change', applyTheme);
 
 // ---------- boot ----------
 
@@ -1170,7 +1233,14 @@ function route(hash = location.hash) {
 buildHelp();
 buildTools();
 resize();
+try {
+  store.theme = localStorage.getItem(THEME_KEY) || 'auto';
+} catch {
+  /* private mode */
+}
+applyTheme();
 await loadStore();
+applyTheme(); // the saved choice, if localStorage had lost it
 route((await launchHash()) || location.hash);
 window.addEventListener('hashchange', () => route());
 onLinkOpened(route);

@@ -1,7 +1,7 @@
 // The share card: a PNG with the starting puzzle, the player's result, and the
 // challenge code — everything a friend needs to replay it, no server involved.
 
-import { drawBoard, FONT } from './render.js';
+import { drawBoard, setPalette, FONT } from './render.js';
 import { formatCode } from './codec.js';
 import { shareImage } from './native.js';
 
@@ -41,7 +41,13 @@ export function makeShareCard({ state, title, headline, code, link }) {
   ctx.restore();
   ctx.save();
   ctx.translate(90, 210);
-  drawBoard(ctx, 900, { state, time: 0, still: true });
+  // The card is always the daylight look, whatever theme the sender plays in.
+  const prev = setPalette('light');
+  try {
+    drawBoard(ctx, 900, { state, time: 0, still: true });
+  } finally {
+    setPalette(prev);
+  }
   ctx.restore();
 
   ctx.fillStyle = '#1e1b26';

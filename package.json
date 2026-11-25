@@ -11,6 +11,7 @@
     "sync": "npm run build && cap sync",
     "ios": "npm run sync && cap open ios",
     "android": "npm run sync && cap open android",
+    "ios:upload": "bash tools/ios-upload.sh",
     "store-assets": "node tools/store/make.mjs",
     "android:bundle": "npm run sync && cd android && ./gradlew bundleRelease"
   },
