@@ -19,6 +19,17 @@
   --gold: #e9a92a;
   --good: #23875f;
   --bad: #c9391f;
+  --on-ink: #fffdf8; /* text and icons on ink-coloured caps */
+  --ink-edge: #000;
+  --ink-hover: #34303f;
+  --on-ink-2: #cdc6d6;
+  --on-ink-off: #4a4555;
+  --done: #8fe0b8;
+  --hover-cap: #fff;
+  --tray-edge: #c2b59d;
+  --scrim: 40, 32, 22; /* rgb, for rgba() overlays */
+  --shade: 60, 40, 15; /* rgb, for shadows */
+  color-scheme: light;
   --tap: 48px;
   --gap: 8px;
   --board: 300px;
@@ -26,6 +37,7 @@
   --pad-top: max(8px, env(safe-area-inset-top));
   --pad-bottom: max(12px, env(safe-area-inset-bottom));
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.3, 1.6, 0.5, 1);
   --font: ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-family: var(--font);
   font-size: 16px;
@@ -35,6 +47,34 @@
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   touch-action: manipulation; /* no double-tap zoom */
+}
+
+/* Dark: the same table at night. Ink caps turn light, so primary buttons invert. Set on
+   <html> by the inline script in index.html (Auto follows the system) and by main.js. */
+:root[data-theme='dark'] {
+  --paper: #191714;
+  --card: #24211d;
+  --sunk: #2e2a24;
+  --edge: #3b362e;
+  --edge-dark: #4b453b;
+  --ink: #f1ebe0;
+  --ink-2: #b5ab9c;
+  --ink-3: #867c6f;
+  --signal: #ff6a45;
+  --gold: #f2b53d;
+  --good: #4cc28f;
+  --bad: #ff6a50;
+  --on-ink: #1c1a17;
+  --ink-edge: #a99f8d;
+  --ink-hover: #ffffff;
+  --on-ink-2: #5d554a;
+  --on-ink-off: #c9c0b2;
+  --done: #1f7a54;
+  --hover-cap: #2e2a24;
+  --tray-edge: #12100d;
+  --scrim: 0, 0, 0;
+  --shade: 0, 0, 0;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -67,12 +107,19 @@ button {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition: transform 0.08s var(--ease-out), box-shadow 0.08s var(--ease-out), background-color 0.15s, opacity 0.15s;
+  /* Released: springs back up with a slight overshoot. */
+  transition: transform 0.22s var(--spring), box-shadow 0.22s var(--spring), background-color 0.15s, opacity 0.15s;
 }
-button:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 0 0 1.5px var(--cap-edge), 0 1px 0 var(--cap-edge); }
+/* Pressed: sinks onto its edge quickly. .pressed is set from JS (iOS skips :active on quick taps). */
+button:is(:active, .pressed):not(:disabled) {
+  transform: translateY(2px) scale(0.985);
+  box-shadow: inset 0 0 0 1.5px var(--cap-edge), 0 1px 0 var(--cap-edge);
+  transition-duration: 0.06s;
+  transition-timing-function: var(--ease-out);
+}
 button:disabled { opacity: 0.38; cursor: default; }
 button:focus-visible, a.link:focus-visible, input:focus-visible, canvas:focus-visible { outline: 2.5px solid var(--ink); outline-offset: 3px; }
-button.primary { --cap: var(--ink); --cap-edge: #000; color: #fffdf8; font-weight: 700; }
+button.primary { --cap: var(--ink); --cap-edge: var(--ink-edge); color: var(--on-ink); font-weight: 700; }
 button.big { width: 100%; min-height: 54px; font-size: 1.05rem; font-weight: 700; }
 button.link, .icon-btn {
   background: none;
@@ -80,12 +127,13 @@ button.link, .icon-btn {
   margin-bottom: 0;
 }
 button.link { color: var(--ink-2); padding: 0 12px; font-size: 0.95rem; font-weight: 600; }
-button.link:active:not(:disabled), .icon-btn:active:not(:disabled) { transform: scale(0.94); box-shadow: none; }
-a.link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--ink-2); font-size: 0.95rem; font-weight: 600; text-decoration: none; }
+button.link:is(:active, .pressed):not(:disabled), .icon-btn:is(:active, .pressed):not(:disabled) { transform: scale(0.92); box-shadow: none; }
+a.link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--ink-2); font-size: 0.95rem; font-weight: 600; text-decoration: none; transition: transform 0.22s var(--spring); }
+a.link:is(:active, .pressed) { transform: scale(0.94); transition-duration: 0.06s; }
 
 @media (hover: hover) {
-  button:hover:not(:disabled):not(.primary):not(.link):not(.icon-btn) { --cap: #fff; }
-  button.primary:hover:not(:disabled) { --cap: #34303f; }
+  button:hover:not(:disabled):not(.primary):not(.link):not(.icon-btn) { --cap: var(--hover-cap); }
+  button.primary:hover:not(:disabled) { --cap: var(--ink-hover); }
   button.link:hover, a.link:hover { color: var(--ink); }
   .icon-btn:hover:not(:disabled) { background: var(--sunk); }
 }
@@ -173,7 +221,7 @@ a.link { display: inline-flex; align-items: center; min-height: 44px; padding: 0
   border-radius: calc(var(--board) * 0.05);
   touch-action: none;
   /* The tray's own edge and a soft contact shadow. */
-  box-shadow: 0 5px 0 #c2b59d, 0 16px 30px -12px rgba(80, 60, 30, 0.35);
+  box-shadow: 0 5px 0 var(--tray-edge), 0 16px 30px -12px rgba(var(--shade), 0.35);
   margin-bottom: 5px;
 }
 
@@ -250,9 +298,9 @@ button.key {
   border-radius: 16px;
 }
 button.key .icon { width: 22px; height: 22px; }
-button.key.primary { color: #fffdf8; }
+button.key.primary { color: var(--on-ink); }
 .controls[hidden], .editor-bar[hidden] { display: none; }
-@keyframes nudge { 0%, 100% { outline-color: rgba(30, 27, 38, 0.9); } 50% { outline-color: rgba(30, 27, 38, 0); } }
+@keyframes nudge { 0%, 100% { outline-color: var(--ink); } 50% { outline-color: transparent; } }
 .controls button.attention { outline: 2.5px solid var(--ink); outline-offset: 3px; animation: nudge 1.4s ease-in-out infinite; }
 
 .editor-bar { flex: none; display: flex; flex-direction: column; gap: var(--gap); }
@@ -271,8 +319,8 @@ button.key.primary { color: #fffdf8; }
   border-radius: 12px;
 }
 .tools button .tile { width: 22px; height: 22px; }
-.tools button[aria-checked='true'] { --cap: var(--ink); --cap-edge: #000; color: #fffdf8; }
-.tools button[aria-checked='true'] .tile { filter: drop-shadow(0 0 0 #fffdf8); }
+.tools button[aria-checked='true'] { --cap: var(--ink); --cap-edge: var(--ink-edge); color: var(--on-ink); }
+.tools button[aria-checked='true'] .tile { filter: drop-shadow(0 0 0 var(--on-ink)); }
 
 /* Narrow phones (iPhone SE 1st gen, small Androids). */
 @media (max-width: 359px) {
@@ -348,12 +396,10 @@ button.key.primary { color: #fffdf8; }
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(40, 32, 22, 0.38);
+  background: rgba(var(--scrim), 0.38);
   animation: fade-in 0.18s ease-out;
 }
-.overlay.soft { background: rgba(40, 32, 22, 0.1); }
-/* The win card sits low on every screen size, so the solved board stays in view. */
-.overlay.soft:has(#panel-win.compact:not([hidden])) { align-items: flex-end; }
+.overlay.soft { background: rgba(var(--scrim), 0.1); }
 /* Full-screen pages (home, levels) replace the game rather than floating over it. */
 .overlay.full { background: var(--paper); padding: 0; align-items: stretch; animation: none; }
 .overlay[hidden] { display: none; }
@@ -373,7 +419,7 @@ button.key.primary { color: #fffdf8; }
   border-radius: 28px;
   padding: 26px 20px 16px;
   text-align: center;
-  box-shadow: 0 30px 70px -20px rgba(60, 40, 15, 0.45);
+  box-shadow: 0 30px 70px -20px rgba(var(--shade), 0.45);
   animation: sheet-in 0.22s var(--ease-out);
 }
 .panel[hidden] { display: none; }
@@ -451,7 +497,7 @@ button.mode {
   text-align: left;
   border-radius: 20px;
 }
-button.mode.feature { --cap: var(--ink); --cap-edge: #000; color: #fffdf8; min-height: 84px; }
+button.mode.feature { --cap: var(--ink); --cap-edge: var(--ink-edge); color: var(--on-ink); min-height: 84px; }
 button.mode.small { min-height: 56px; justify-content: center; gap: 10px; padding: 8px 12px; }
 .mode-icon {
   flex: none;
@@ -469,10 +515,10 @@ button.mode.small { min-height: 56px; justify-content: center; gap: 10px; paddin
 .mode-name { font-weight: 800; font-size: 1.1rem; letter-spacing: -0.01em; }
 .small .mode-name { font-size: 0.98rem; }
 .mode-sub { color: var(--ink-2); font-size: 0.88rem; font-weight: 500; }
-.feature .mode-sub { color: #cdc6d6; }
-.mode-sub .done { color: #8fe0b8; font-weight: 700; }
+.feature .mode-sub { color: var(--on-ink-2); }
+.mode-sub .done { color: var(--done); font-weight: 700; }
 .mode-go { flex: none; color: var(--ink-3); }
-.feature .mode-go { color: #fffdf8; }
+.feature .mode-go { color: var(--on-ink); }
 .meter { display: block; height: 6px; border-radius: 3px; background: var(--sunk); overflow: hidden; margin-top: 4px; }
 .meter > span { display: block; height: 100%; width: 0; background: var(--gold); border-radius: 3px; transition: width 0.4s var(--ease-out); }
 #panel-menu .sheet-footer { flex: none; margin-top: 4px; }
@@ -510,9 +556,9 @@ button.mode.small { min-height: 56px; justify-content: center; gap: 10px; paddin
 .pips.t-expert i.on { background: var(--ink); }
 .pips.t-master i.on { background: var(--ink); }
 .pips.t-master i.on:last-child { background: var(--signal); }
-.level-grid .next .pips i:not(.on) { background: #4a4555; }
+.level-grid .next .pips i:not(.on) { background: var(--on-ink-off); }
 .level-grid .next .pips.t-expert i.on,
-.level-grid .next .pips.t-master i.on { background: #fffdf8; }
+.level-grid .next .pips.t-master i.on { background: var(--on-ink); }
 .level-grid .next .pips.t-master i.on:last-child { background: var(--signal); }
 .level-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .level-grid button {
@@ -528,9 +574,9 @@ button.mode.small { min-height: 56px; justify-content: center; gap: 10px; paddin
 .level-grid .num { font-size: 1.7rem; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
 .level-grid .name { font-size: 0.74rem; font-weight: 600; color: var(--ink-2); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .level-grid .stars { font-size: 0.85rem; margin-top: 3px; }
-.level-grid .next { --cap: var(--ink); --cap-edge: #000; color: #fffdf8; }
-.level-grid .next .name { color: #cdc6d6; }
-.level-grid .next .star { color: #4a4555; }
+.level-grid .next { --cap: var(--ink); --cap-edge: var(--ink-edge); color: var(--on-ink); }
+.level-grid .next .name { color: var(--on-ink-2); }
+.level-grid .next .star { color: var(--on-ink-off); }
 .level-grid .fresh { --cap: var(--paper); }
 .level-grid .fresh .num { color: var(--ink-2); }
 
@@ -539,7 +585,7 @@ button.mode.small { min-height: 56px; justify-content: center; gap: 10px; paddin
 button.tier-pick { min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 8px 18px; text-align: left; }
 .tier-name { font-size: 1.08rem; font-weight: 800; }
 .tier-sub { font-size: 0.86rem; font-weight: 500; color: var(--ink-2); }
-button.tier-pick.primary .tier-sub { color: #cdc6d6; }
+button.tier-pick.primary .tier-sub { color: var(--on-ink-2); }
 
 /* ---------- code entry, help ---------- */
 
@@ -575,24 +621,24 @@ button.tier-pick.primary .tier-sub { color: #cdc6d6; }
 @keyframes star-pop { 0% { transform: scale(0.2) rotate(-30deg); color: var(--edge); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
 button.link.accent { color: var(--signal); font-weight: 800; }
 
-/* Levels and Endless: a short card (score left, Next right) so the solved board stays in view. */
-#panel-win.compact:not([hidden]) {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: 'handle handle' 'score next' 'sub next' 'foot foot';
-  align-items: center;
-  column-gap: 16px;
-  text-align: left;
+/* The win card is a centered card on every screen, never a bottom sheet. Its ids
+   outrank the phone-portrait sheet rules above. */
+.overlay:has(#panel-win:not([hidden])) { align-items: center; padding: 24px; background: rgba(var(--scrim), 0.24); }
+#panel-win {
+  max-width: 340px;
+  border-radius: 28px;
+  padding: 26px 22px 12px;
+  animation: win-pop 0.34s var(--spring);
 }
-#panel-win.compact::before { grid-area: handle; }
-#panel-win.compact h2 { display: none; }
-#panel-win.compact .win-score { grid-area: score; font-size: 1.2rem; }
-#panel-win.compact .win-score .stars { justify-content: flex-start; font-size: 1.9rem; gap: 4px; margin: 0 0 6px; }
-#panel-win.compact #win-sub { grid-area: sub; margin: 2px 0 0; font-size: 0.92rem; }
-#panel-win.compact #win-sub:empty { display: none; }
-#panel-win.compact .menu-list { grid-area: next; margin: 0; }
-#panel-win.compact .menu-list button { width: auto; padding: 0 26px; }
-#panel-win.compact .sheet-footer { grid-area: foot; }
+#panel-win::before { display: none; }
+#panel-win h2 { margin: 0; }
+#panel-win .win-score { font-size: 1.05rem; font-weight: 700; color: var(--ink-2); }
+#panel-win .win-score .stars { margin: 10px 0 8px; }
+#panel-win #win-sub { margin: 4px 0 0; font-size: 0.92rem; }
+#panel-win #win-sub:empty { display: none; }
+#panel-win .menu-list { margin-top: 18px; }
+#panel-win .sheet-footer { margin-top: 4px; }
+@keyframes win-pop { from { transform: scale(0.9); opacity: 0; } }
 
 .toast {
   position: fixed;
@@ -603,11 +649,11 @@ button.link.accent { color: var(--signal); font-weight: 800; }
   padding: 11px 18px;
   border-radius: 999px;
   background: var(--ink);
-  color: #fffdf8;
+  color: var(--on-ink);
   font-size: 0.92rem;
   font-weight: 600;
   text-align: center;
-  box-shadow: 0 12px 30px -8px rgba(30, 20, 10, 0.45);
+  box-shadow: 0 12px 30px -8px rgba(var(--shade), 0.45);
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, -8px);

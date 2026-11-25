@@ -4,7 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f4efe6">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    // Theme before first paint, so dark mode never flashes light. main.js keeps it in sync.
+    (function () {
+      var pick = 'auto';
+      try { pick = localStorage.getItem('chain-shift-theme') || 'auto'; } catch (e) {}
+      var dark = pick === 'dark' || (pick === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
   <meta name="description" content="Every move triggers a chain reaction. Predict where everything stops.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -94,6 +103,7 @@
       </div>
       <div class="sheet-footer">
         <button class="link" id="m-help">How to play</button>
+        <button class="link" id="m-theme">Appearance: Auto</button>
         <a class="link" id="m-rate" target="_blank" rel="noopener" hidden>Rate Chain Shift</a>
         <button class="link" id="m-privacy" hidden>Privacy settings</button>
         <a class="link" id="m-policy" href="privacy.html" target="_blank" rel="noopener">Privacy policy</a>
