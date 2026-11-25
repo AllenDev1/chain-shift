@@ -83,7 +83,7 @@ function placeTarget(s, cell) {
 // sets off a real chain (several pieces travel, the cube goes a distance) while other
 // moves also shove the cube around as decoys. Collects `pool` candidates and keeps the
 // one with the richest chain.
-export function generateOneMove(seed, { cfg = CONFIGS.dense, minMovers = 3, minCubeSteps = 2, minMoves = 12, pool = 1, maxTries = 50000 } = {}) {
+export function generateOneMove(seed, { cfg = CONFIGS.dense, minMovers = 3, minCubeSteps = 2, minMoves = 12, minDecoys = 3, pool = 1, maxTries = 50000 } = {}) {
   const rng = mulberry32(seed);
   let best = null, found = 0;
   for (let t = 0; t < maxTries && found < pool; t++) {
@@ -102,7 +102,7 @@ export function generateOneMove(seed, { cfg = CONFIGS.dense, minMovers = 3, minC
       if (!byCell.has(c)) byCell.set(c, []);
       byCell.get(c).push(chainStats(r.events));
     }
-    if (decoys < 3) continue;
+    if (decoys < minDecoys) continue;
     let pick = null;
     for (const [cell, list] of byCell) {
       if (list.length !== 1 || s.floor[cell] !== F.EMPTY) continue;

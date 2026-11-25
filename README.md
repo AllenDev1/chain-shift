@@ -31,8 +31,8 @@ You can also tap a block. Arrows appear around it: tap one to preview that swipe
 | Mode | What it is |
 |---|---|
 | **Daily One-Move** | A new puzzle each day. Exactly one of roughly 20 possible moves wins. Your score is how many tries you needed. |
-| **Levels** | A 12-level campaign that introduces arrows, then pits. Stars are based on moves compared with par. |
-| **Endless** | Freshly generated puzzles with a par of 2–4. |
+| **Levels** | A 100-level campaign in nine chapters. Basics, Arrows, Pits, Crossroads and Expert have 12 levels each. Long Haul, Tight Quarters, Gauntlet and Grandmaster have 10 each. Every level is rated Easy, Medium, Hard, Expert or Master. Each chapter opens once you earn half the stars of the one before it (18 of 36, or 15 of 30). Stars are based on moves compared with par. |
+| **Endless** | Freshly generated puzzles at Easy (par 2–3), Medium (par 3–4) or Hard (par 5–6). The game remembers the last choice. |
 | **Editor** | Build your own puzzle. **Check** runs the solver to find its par and tells you whether it's a true one-move puzzle. |
 
 ## Sharing without a server
@@ -74,6 +74,17 @@ ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> npm run ios:upload
 
 `tools/ios-upload.sh` archives, signs and uploads the app. It sets a new build number each time (date and time, for example `261102.1530`).
 
+For Google Play, `npm run android:bundle` builds a signed `android/app/build/outputs/bundle/release/app-release.aab`. Signing reads `android/keystore.properties`, which git ignores and which points at the upload keystore kept outside the repo:
+
+```properties
+storeFile=/Users/you/keys/chain-shift-upload.jks
+storePassword=…
+keyAlias=upload
+keyPassword=…
+```
+
+Raise `versionCode` in `android/app/build.gradle` before each upload.
+
 `tools/build-www.mjs` copies the game into `www/` and adds Capacitor's runtime (`capacitor.js`). `js/native.js` is the only app-specific module. In the browser it does nothing, and in the apps it replaces four browser features:
 
 - **Saves:** Preferences instead of `localStorage`, which iOS may clear.
@@ -93,6 +104,10 @@ The apps show AdMob interstitials through [`@capacitor-community/admob`](https:/
 - **Support page:** `support.html`, published at https://allendev1.github.io/chain-shift/support.html. Players reach support at info@thebrilliantideas.com. Use this URL as the App Store support URL.
 - **Testing:** these are live ads. Register your phones under AdMob → Settings → Test devices before tapping any of them. Simulators and emulators get test ads automatically.
 
+### Ratings
+
+The apps ask for a store rating with the native prompt, through [`@capacitor-community/in-app-review`](https://github.com/capacitor-community/in-app-review). All the logic is in `js/review.js`. It only asks after at least 8 solves on at least 2 different days, right after a 3-star solve with no hints, when the player taps Next. It never asks in the same break as an ad, and asks at most once every 120 days and 3 times ever. The menu's **Rate Chain Shift** link opens the store's review page; on iOS it uses `APP_STORE_ID` in the same file.
+
 App icons and splash screens are generated from `assets/` with `npx @capacitor/assets generate --ios --android` (background `#0f1020`).
 
 ### Store screenshots and videos
@@ -111,13 +126,16 @@ index.html, css/style.css   UI shell
 js/engine.js     rules, simulation, preview, BFS solver (pure; runs in Node too)
 js/codec.js      board ⇄ challenge code
 js/generator.js  seeded generation: Daily one-move puzzles, multi-move puzzles
-js/levels.js     campaign (generated, do not edit by hand)
+js/levels.js     campaign and chapters (generated, do not edit by hand)
+js/difficulty.js measures a puzzle and rates it easy / medium / hard / expert / master
 js/render.js     canvas drawing, shared by the game and the share card
 js/animate.js    plays back simulation events as motion
 js/share.js      share-card PNG and Web Share / download fallback
 js/icons.js      inline SVG icons (UI + tiles that match the board art)
+js/review.js     when to ask for a store rating
 js/main.js       game flow, input, sheets, editor
-tools/make-levels.mjs   regenerates js/levels.js
+tools/make-levels.mjs   regenerates js/levels.js (about 30 minutes from scratch, one worker per core;
+                        a cache in node_modules/.cache rebuilds only changed levels; --fresh ignores it)
 tools/serve.mjs         local static server
 ```
 
@@ -126,3 +144,13 @@ tools/serve.mjs         local static server
 The target is just a floor marker and has no effect on how pieces move. So the generator first builds a board **without** a target, simulates every possible move, and finds the cells where the cube can come to rest. It then puts the target on a cell that exactly one move reaches. For multi-move puzzles, a breadth-first search finds the first depth at which the cube can stop on each cell, and that depth becomes the par.
 
 One design consequence: **without arrows, every chain runs along a single straight line**, because momentum keeps its direction. Long one-move chains need arrows, so the campaign uses arrow-free boards for multi-move setup puzzles and saves the one-move showpieces for after arrows are introduced.
+
+### Difficulty
+
+Par alone is a poor measure of difficulty. Long puzzles often allow several move orders, so a par-6 puzzle where many first moves work can be easier than a par-4 puzzle with a single way in. `js/difficulty.js` therefore measures each puzzle:
+
+- **Multi-move puzzles:** par, adjusted by how many first moves still allow an optimal solve. Only one good first move makes a puzzle a step harder; four or more make it a step easier.
+- **One-move puzzles:** the number of pieces the winning chain sets moving, plus a step up when many other moves also shove the cube around.
+- **Master:** par 9 or 10 with at most three good first moves, or par 10 with any number. Par-8 puzzles are always Expert, so Master is always longer than the tiers below it. Campaign par stops at 10 because the in-game hint searches 10 moves deep.
+
+Each campaign level in `tools/make-levels.mjs` names the tier it should be. The script generates candidates, keeps only those that measure at that tier, and picks the one whose solution has the most chain reaction. Seeds come from the level's name, so adding or reordering levels leaves the others unchanged. The first three levels of chapters 1–4 are the original 1.0 levels, kept as they were. Chapters 6–9 each start at Expert and climb to par-10 Master finales. Progress is saved per puzzle code, and 1.0 saves (which used level positions) are migrated on load. The tests re-measure every level and fail if one no longer matches its tier.

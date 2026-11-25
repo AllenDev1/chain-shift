@@ -80,18 +80,29 @@ export async function startAds() {
 }
 
 // A solved puzzle is being left for the next one. Shows an interstitial if one is loaded and
-// the pacing allows; the next puzzle loads underneath it.
+// the pacing allows; the next puzzle loads underneath it. Returns true if an ad is showing.
 export function adBreak() {
-  if (!started) return;
+  if (!started) return false;
   solves++;
   const now = performance.now();
   const due = solves > FREE_SOLVES && solves - solvesAtLastAd >= SOLVES_BETWEEN && now - lastAdAt >= MIN_GAP_MS;
-  if (!due) return;
-  if (!ready) return preload();
+  if (!due) return false;
+  if (!ready) {
+    preload();
+    return false;
+  }
   ready = false;
   solvesAtLastAd = solves;
   lastAdAt = now;
   AdMob.showInterstitial().catch(preload);
+  return true;
+}
+
+// Something else just interrupted the player (the review prompt): restart the ad pacing so
+// the next ad is a full gap away.
+export function deferAds() {
+  solvesAtLastAd = solves;
+  lastAdAt = performance.now();
 }
 
 // Regions with consent rules (EEA, UK, some US states) require a way to change the choice.

@@ -1,13 +1,15 @@
 import { SIZE, F, P, idx, clone, withIds, emptyState, legalMoves, simulate, firstReaction, solve, winningMoves, validate } from './engine.js';
 import { encode, decode, formatCode } from './codec.js';
 import { CONFIGS, generateDaily, generatePuzzle, todayString, dailyNumber } from './generator.js';
-import { LEVELS } from './levels.js';
+import { LEVELS, CHAPTERS } from './levels.js';
+import { TIER_NAMES, chainLength } from './difficulty.js';
 import { drawBoard, layout, cellAt } from './render.js';
 import { ChainAnimation } from './animate.js';
 import { makeShareCard, shareResult } from './share.js';
-import { UI, TILES } from './icons.js';
+import { UI, TILES, STAR, LOGO, LOCK, stars as starIcons } from './icons.js';
 import { isNative, WEB_URL, loadSaved, writeSaved, haptic, launchHash, onLinkOpened } from './native.js';
-import { startAds, adBreak, needsPrivacyOptions, showPrivacyOptions } from './ads.js';
+import { startAds, adBreak, deferAds, needsPrivacyOptions, showPrivacyOptions } from './ads.js';
+import { newRecord, countSolve, maybeAskForReview, storeReviewUrl } from './review.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -22,10 +24,33 @@ const DRAG_COMMIT = 0.4; // release beyond this commits the swipe
 // ---------- persistence ----------
 
 const STORE_KEY = 'chain-shift-v1';
-const store = { levels: {}, daily: {}, helpSeen: false };
+// best: fewest moves (or tries) per level, keyed by the level's puzzle code. 1.0 saved
+// `levels` by position instead; it is migrated once and then left alone.
+const store = { levels: {}, best: {}, daily: {}, endless: 'medium', helpSeen: false, review: newRecord() };
+
+// The 1.0 campaign, in its order, so old position-keyed saves can be mapped to codes.
+const LEGACY_CODES = [
+  '12QoxnixzfFZSw7atMvvXoRByjEb', 'AC72MkvxTpnX8tR51U5f5Bt5KcBb', '12Uteg3GpUk1HCDZnPQ5XeX7ByAk',
+  '12V5G81nB2tZurqJA4s5VhToztog', '11Riyh1fnYm3HLCg2DCQPdST2WjU', '6qYdJD62z2ZJHfVASF6LXqXYpoRr',
+  '116wZSb7KzbJWxZSaq5i5GGRHnFE', '2wpvxvUVMbhHNc6vzoqsddeZ1FdL', '1WcnBj1cq4q7RfQBGKy7vLjtxNCs',
+  '8J6k1sqrPzkBQ51kvySN4PDqwUje', '9uFKcJAPk4coAXDA4WpBXQbz8A71', '2V2jsebrLyULQnwBtFyDU6QCjx3f',
+];
+
 async function loadStore() {
   try {
-    Object.assign(store, JSON.parse((await loadSaved(STORE_KEY)) || '{}'));
+    const saved = JSON.parse((await loadSaved(STORE_KEY)) || '{}');
+    Object.assign(store, saved);
+    if (!saved.best) {
+      store.best = {};
+      for (const [i, score] of Object.entries(store.levels)) if (LEGACY_CODES[i]) store.best[LEGACY_CODES[i]] = score;
+    }
+    // Saves from before review tracking: credit the progress already made. Each Daily
+    // solved is its own day.
+    if (!saved.review) {
+      const dailies = Object.keys(store.daily).length;
+      store.review.solves = Object.keys(store.levels).length + dailies;
+      store.review.days = dailies;
+    }
   } catch {
     /* unreadable save: start fresh */
   }
@@ -65,6 +90,8 @@ const ui = {
   flashes: [],
   message: null, // { text, tone }: transient status, cleared by the next action
   busyText: '',
+  lastReach: null, // stars in reach at the last HUD update
+  lostAt: -1, // index of the star that just slipped out of reach
 };
 
 const editor = { state: emptyState(), tool: 'block', painting: false, lastCell: null, message: '' };
@@ -92,12 +119,18 @@ function buzz(pattern) {
 // The play area flexes to fill whatever the header and controls leave; the board is
 // the largest square that fits in it above the status line. #app's max-width caps it.
 function resize() {
-  const status = $('status');
-  const statusH = status.offsetParent ? status.offsetHeight + parseFloat(getComputedStyle(status).marginTop) : 0;
-  const size = Math.max(120, Math.floor(Math.min(playArea.clientWidth, playArea.clientHeight - statusH)));
+  // Everything stacked with the board (scoreboard, status, the tray's edge) comes out first.
+  let extra = parseFloat(getComputedStyle(canvas).marginBottom) || 0;
+  for (const el of playArea.children) {
+    if (el.classList.contains('stage') || !el.offsetParent) continue;
+    const cs = getComputedStyle(el);
+    extra += el.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+  }
+  const size = Math.max(120, Math.floor(Math.min(playArea.clientWidth, playArea.clientHeight - extra)));
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   if (size === ui.size && canvas.width === Math.round(size * dpr)) return;
   ui.size = size;
+  document.documentElement.style.setProperty('--board', `${size}px`);
   canvas.style.width = canvas.style.height = `${size}px`;
   canvas.width = canvas.height = Math.round(size * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -144,19 +177,55 @@ function toast(msg, ms = 2200) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-function updateHud() {
-  const busy = !!ui.anim;
-  if (ui.mode === 'editor') {
-    $('hud-title').textContent = 'Puzzle editor';
-    $('hud-stats').textContent = 'Build · Check · Share';
-    renderStatus();
+// The most stars the player can still earn on this puzzle. An unsolved puzzle needs at least
+// one more move (or one more try), so that is what the meter counts against par.
+function starsInReach() {
+  if (!game.par) return null;
+  const n = (game.oneMove ? game.attempts : game.moves) + (game.solved ? 0 : 1);
+  return game.oneMove ? oneMoveStars(n) : stars(n, game.par);
+}
+
+function reachIcons(n, lostAt = -1) {
+  return Array.from({ length: 3 }, (_, i) => STAR.replace('class="star"', `class="star${i < n ? ' on' : ''}${i === lostAt ? ' lost' : ''}"`)).join('');
+}
+
+function renderScore() {
+  const board = $('scoreboard');
+  if (ui.mode === 'editor' || !game.meta) {
+    board.innerHTML = ui.scoreHtml = '';
+    $('hud-stats').textContent = ui.mode === 'editor' ? 'Build · Check · Share' : '';
     return;
   }
-  $('hud-title').textContent = game.meta?.title || 'Chain Shift';
+  const attempt = game.attempts + (game.solved || game.awaitingReset ? 0 : 1);
+  const [k, v] = game.oneMove ? ['Try', attempt] : ['Moves', game.moves];
+  const over = !game.oneMove && game.par && game.moves > game.par;
+  const reach = starsInReach();
+  // A star slipping out of reach gets a small pop, so the player notices the cost.
+  // The mark stays until the count changes again, so repeated HUD refreshes don't cut it short.
+  if (reach == null || ui.lastReach == null || reach > ui.lastReach) ui.lostAt = -1;
+  else if (reach < ui.lastReach) ui.lostAt = reach;
+  ui.lastReach = reach;
+  const reachHtml = reach == null ? '' : `<div class="score reach" aria-label="${reach} star${reach > 1 ? 's' : ''} still possible"><span class="stars">${reachIcons(reach, ui.lostAt)}</span></div>`;
+  const html =
+    `<div class="score${over ? ' over' : ''}"><span class="k">${k}</span><span class="v">${v}</span></div>` +
+    `<div class="score"><span class="k">Par</span><span class="v">${game.par ?? '?'}</span></div>` + reachHtml;
+  if (ui.scoreHtml !== html) board.innerHTML = ui.scoreHtml = html;
   const sep = ' <span class="sep">·</span> ';
-  $('hud-stats').innerHTML = game.oneMove
-    ? `One move${sep}Attempt <b>${game.attempts + (game.solved || game.awaitingReset ? 0 : 1)}</b>`
-    : `Moves <b>${game.moves}</b>${sep}Par <b>${game.par ?? '?'}</b>`;
+  $('hud-stats').innerHTML = `${k} <b>${v}</b>${sep}Par <b>${game.par ?? '?'}</b>` + (reach == null ? '' : `${sep}<span class="stars">${reachIcons(reach)}</span>`);
+}
+
+function updateHud() {
+  const busy = !!ui.anim;
+  renderScore();
+  if (ui.mode === 'editor') {
+    $('hud-kicker').textContent = 'Editor';
+    $('hud-title').textContent = 'Build a puzzle';
+    renderStatus();
+    resize();
+    return;
+  }
+  $('hud-kicker').textContent = game.meta?.kicker || '';
+  $('hud-title').textContent = game.meta?.name || game.meta?.title || 'Chain Shift';
 
   const test = game.meta?.kind === 'test';
   $('btn-undo').hidden = game.oneMove;
@@ -170,6 +239,7 @@ function updateHud() {
   const cubeLost = !game.solved && !!game.state && !game.state.piece.includes(P.CUBE);
   $('btn-reset').classList.toggle('attention', !busy && (game.awaitingReset || cubeLost));
   renderStatus();
+  resize();
 }
 
 // ---------- sheets (with Back-button support) ----------
@@ -192,6 +262,7 @@ function showPanel(id, { soft = false } = {}) {
   const overlay = $('overlay');
   overlay.hidden = false;
   overlay.classList.toggle('soft', soft);
+  overlay.classList.toggle('full', $(id).classList.contains('page'));
   for (const p of document.querySelectorAll('.panel')) p.hidden = p.id !== id;
   if (!sheetEntry) {
     history.pushState({ sheet: true }, '');
@@ -238,6 +309,7 @@ function loadPuzzle(state, meta) {
   game.awaitingReset = false;
   game.hintsUsed = 0;
   game.code = encode(game.start);
+  ui.lastReach = null;
   game.par = meta.par ?? solve(game.start, { maxDepth: 10, maxStates: 250000 }).moves;
   game.oneMove = game.par === 1;
   ui.anim = null;
@@ -259,8 +331,11 @@ function generating(fn) {
 }
 
 function playLevel(i) {
+  // A link to a level in a locked chapter opens the level list, which shows how to unlock it.
+  if (!levelOpen(i)) return openLevels();
   const lvl = LEVELS[i];
-  loadPuzzle(decode(lvl.code), { kind: 'level', levelIndex: i, title: `Level ${i + 1} · ${lvl.name}`, tip: lvl.tip, par: lvl.par, hash: `l=${i + 1}` });
+  const kicker = `Level ${i + 1} · ${TIER_NAMES[lvl.tier]}`;
+  loadPuzzle(decode(lvl.code), { kind: 'level', levelIndex: i, title: `Level ${i + 1} · ${lvl.name}`, kicker, name: lvl.name, tip: lvl.tip, par: lvl.par, hash: `l=${i + 1}` });
 }
 
 function playDaily(date = todayString()) {
@@ -270,16 +345,50 @@ function playDaily(date = todayString()) {
       ui.busyText = '';
       return say('Couldn’t build that day’s puzzle.', 'bad');
     }
-    loadPuzzle(p.state, { kind: 'daily', date, title: `Daily One-Move #${dailyNumber(date)}`, par: 1, hash: `d=${date}` });
+    const day = new Date(`${date}T12:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    loadPuzzle(p.state, { kind: 'daily', date, title: `Daily One-Move #${dailyNumber(date)}`, kicker: `Daily · ${day}`, name: `One-Move #${dailyNumber(date)}`, par: 1, hash: `d=${date}` });
   });
 }
 
-function playEndless() {
+// Endless difficulties. Easier ones are cheap to make, so a few candidates are made and the
+// one with the most chain reaction is kept; Hard takes the first one (it can take a moment).
+const ENDLESS = {
+  easy: { sub: 'Par 2–3. A quick warm-up.', minPar: 2, maxPar: 3, pool: 4 },
+  medium: { sub: 'Par 3–4. Some planning.', minPar: 3, maxPar: 4, pool: 3 },
+  hard: { sub: 'Par 5–6. Long setups.', minPar: 5, maxPar: 6, pool: 1 },
+};
+
+function playEndless(tier = store.endless) {
+  if (!ENDLESS[tier]) tier = 'medium';
+  if (store.endless !== tier) {
+    store.endless = tier;
+    save();
+  }
+  const { minPar, maxPar, pool } = ENDLESS[tier];
   generating(() => {
-    const p = generatePuzzle((Math.random() * 2 ** 32) >>> 0, { cfg: CONFIGS.full, minPar: 2, maxPar: 4 });
-    if (!p) return playEndless();
-    loadPuzzle(p.state, { kind: 'endless', title: 'Endless', par: p.par, hash: `c=${encode(p.state)}` });
+    let best = null;
+    for (let k = 0; k < pool || !best; k++) {
+      const p = generatePuzzle((Math.random() * 2 ** 32) >>> 0, { cfg: CONFIGS.full, minPar, maxPar });
+      if (!p) continue;
+      const score = chainLength(p.state, p.solution);
+      if (!best || score > best.score) best = { p, score };
+    }
+    const { p } = best;
+    loadPuzzle(p.state, { kind: 'endless', tier, title: `Endless · ${TIER_NAMES[tier]}`, kicker: `Endless · ${TIER_NAMES[tier]}`, name: 'Fresh puzzle', par: p.par, hash: `c=${encode(p.state)}` });
   });
+}
+
+function openEndless() {
+  const list = $('endless-tiers');
+  list.innerHTML = '';
+  for (const [tier, { sub }] of Object.entries(ENDLESS)) {
+    const b = document.createElement('button');
+    b.className = `big tier-pick${tier === store.endless ? ' primary' : ''}`;
+    b.innerHTML = `<span class="tier-name">${TIER_NAMES[tier]}</span><span class="tier-sub">${sub}</span>`;
+    b.onclick = () => playEndless(tier);
+    list.append(b);
+  }
+  showPanel('panel-endless');
 }
 
 // Accepts a bare code, a formatted code, or a whole shared link.
@@ -291,7 +400,7 @@ function extractCode(raw) {
 function playCode(raw) {
   const s = decode(extractCode(raw));
   if (!s || validate(s).length) return false;
-  generating(() => loadPuzzle(s, { kind: 'custom', title: 'Challenge', hash: `c=${encode(s)}` }));
+  generating(() => loadPuzzle(s, { kind: 'custom', title: 'Challenge', kicker: 'Shared puzzle', name: 'Challenge', hash: `c=${encode(s)}` }));
   return true;
 }
 
@@ -369,6 +478,7 @@ function onChainFinished() {
 
   if (r.outcome === 'win') {
     game.solved = true;
+    if (game.meta.kind !== 'test') countSolve(store.review, todayString());
     recordProgress();
     say(game.oneMove ? 'Found it!' : 'Solved!', 'good');
     buzz([12, 50, 28]);
@@ -423,9 +533,13 @@ function hint() {
 function recordProgress() {
   const m = game.meta;
   if (m.kind === 'level') {
-    const prev = store.levels[m.levelIndex];
+    const code = LEVELS[m.levelIndex].code;
+    const prev = store.best[code];
     const score = game.oneMove ? game.attempts : game.moves;
-    if (prev == null || score < prev) store.levels[m.levelIndex] = score;
+    const wasOpen = CHAPTERS.map((_, k) => chapterOpen(k));
+    if (prev == null || score < prev) store.best[code] = score;
+    // A better score can open the next chapter; the win card says so.
+    ui.unlocked = CHAPTERS.find((_, k) => !wasOpen[k] && chapterOpen(k))?.name || null;
   } else if (m.kind === 'daily' && store.daily[m.date] == null) {
     store.daily[m.date] = game.attempts;
   }
@@ -441,22 +555,43 @@ const BRAG_PAR = 3; // a perfect solve at this par or harder earns a gentle "cha
 
 const stars = (moves, par) => (moves <= par ? 3 : moves <= par + 2 ? 2 : 1);
 const oneMoveStars = (tries) => (tries === 1 ? 3 : tries <= 3 ? 2 : 1);
-const starText = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
+const bestOf = (i) => store.best[LEVELS[i].code];
+const levelStars = (i) => {
+  const best = bestOf(i);
+  if (best == null) return 0;
+  return LEVELS[i].par === 1 ? oneMoveStars(best) : stars(best, LEVELS[i].par);
+};
+
+// Chapters come from levels.js. Chapter k opens once the previous chapter has
+// CHAPTERS[k].unlock stars. A chapter where the player has already solved a level always
+// stays open, so nobody loses access to a level they've played.
+const chapterLevels = (k) => LEVELS.flatMap((l, i) => (l.chapter === k ? [i] : []));
+const chapterStars = (k) => chapterLevels(k).reduce((sum, i) => sum + levelStars(i), 0);
+function chapterOpen(k) {
+  if (k === 0) return true;
+  if (chapterLevels(k).some((i) => bestOf(i) != null)) return true;
+  return chapterStars(k - 1) >= CHAPTERS[k].unlock;
+}
+const levelOpen = (i) => chapterOpen(LEVELS[i].chapter);
+const nextLevel = () => LEVELS.findIndex((_, i) => bestOf(i) == null && levelOpen(i));
 
 function showWin() {
   const m = game.meta;
   $('win-title').textContent = game.oneMove ? 'Found it!' : 'Solved!';
   const n = game.oneMove ? oneMoveStars(game.attempts) : stars(game.moves, game.par);
   const line = game.oneMove ? (game.attempts === 1 ? 'First try' : `${game.attempts} tries`) : `${game.moves} moves · par ${game.par}`;
-  $('win-score').innerHTML = `<span class="stars" aria-label="${n} of 3 stars">${starText(n)}</span>${line}`;
+  $('win-score').innerHTML = `<span class="stars" aria-label="${n} of 3 stars">${starIcons(n)}</span>${line}`;
   const lead = shareFirst(m);
   const brag = !lead && m.kind !== 'test' && !game.hintsUsed && n === 3 && game.par >= BRAG_PAR;
+  const unlocked = m.kind === 'level' && ui.unlocked;
+  ui.unlocked = null;
   $('win-sub').textContent = m.kind === 'daily' ? 'A new one-move puzzle arrives tomorrow.'
+    : unlocked ? `New chapter unlocked: ${unlocked}.`
     : game.hintsUsed ? `Hints used: ${game.hintsUsed}`
     : brag ? 'Perfect solve. Think a friend can match it?'
     : '';
   const next = $('win-next');
-  if (m.kind === 'level') next.textContent = m.levelIndex + 1 < LEVELS.length ? 'Next level' : 'All levels';
+  if (m.kind === 'level') next.textContent = m.levelIndex + 1 < LEVELS.length && levelOpen(m.levelIndex + 1) ? 'Next level' : 'All levels';
   else if (m.kind === 'endless') next.textContent = 'Next puzzle';
   else if (m.kind === 'test') next.textContent = 'Back to editor';
   else next.textContent = 'More puzzles';
@@ -472,13 +607,25 @@ function showWin() {
 
 function nextAfterWin() {
   const m = game.meta;
-  if (m.kind === 'level' || m.kind === 'endless') adBreak();
+  // Read before the next puzzle replaces the game state.
+  const n = game.oneMove ? oneMoveStars(game.attempts) : stars(game.moves, game.par);
+  const moment = { stars: n, hints: game.hintsUsed, adShown: false };
+  if (m.kind === 'level' || m.kind === 'endless') moment.adShown = adBreak();
   if (m.kind === 'level') {
-    if (m.levelIndex + 1 < LEVELS.length) playLevel(m.levelIndex + 1);
+    if (m.levelIndex + 1 < LEVELS.length && levelOpen(m.levelIndex + 1)) playLevel(m.levelIndex + 1);
     else openLevels();
-  } else if (m.kind === 'endless') playEndless();
+  } else if (m.kind === 'endless') playEndless(m.tier);
   else if (m.kind === 'test') openEditor(game.start);
   else openMenu();
+  // The player has just finished a puzzle and chosen to move on: the one moment a rating
+  // prompt may appear. Only for our own puzzles, not a friend's code or the editor.
+  if (m.kind === 'level' || m.kind === 'endless' || m.kind === 'daily') {
+    maybeAskForReview(store.review, moment).then((asked) => {
+      if (!asked) return;
+      save();
+      deferAds();
+    });
+  }
 }
 
 function shareLink(code) {
@@ -517,27 +664,71 @@ async function shareCurrent() {
 function openMenu() {
   const today = todayString();
   const done = store.daily[today];
-  $('m-daily').textContent = `Daily One-Move #${dailyNumber(today)}${done != null ? '  ✓' : ''}`;
+  const num = `#${dailyNumber(today)}`;
+  $('m-daily-sub').innerHTML = done == null ? `${num} · A new puzzle every day`
+    : `${num} · <span class="done">Solved ${done === 1 ? 'first try' : `in ${done} tries`}</span>`;
+  const solved = LEVELS.filter((_, i) => bestOf(i) != null).length;
+  const earned = LEVELS.reduce((sum, _, i) => sum + levelStars(i), 0);
+  $('m-levels-sub').textContent = solved ? `${solved} of ${LEVELS.length} solved · ${earned} of ${LEVELS.length * 3} stars` : `${LEVELS.length} levels · Start here`;
+  $('m-levels-bar').style.width = `${(earned / (LEVELS.length * 3)) * 100}%`;
+  $('m-endless-sub').textContent = `${TIER_NAMES[store.endless] || 'Medium'} · Never runs out`;
   $('m-close').hidden = !game.start || ui.mode === 'editor';
   $('m-privacy').hidden = !needsPrivacyOptions();
   showPanel('panel-menu');
 }
 
+const TIER_PIPS = { easy: 1, medium: 2, hard: 3, expert: 4, master: 5 };
+const pips = (tier) =>
+  `<span class="pips t-${tier}" aria-hidden="true">${[1, 2, 3, 4, 5].map((n) => `<i${n <= TIER_PIPS[tier] ? ' class="on"' : ''}></i>`).join('')}</span>`;
+
 function openLevels() {
-  const grid = $('level-grid');
-  grid.innerHTML = '';
-  const next = LEVELS.findIndex((_, i) => store.levels[i] == null);
-  LEVELS.forEach((lvl, i) => {
-    const best = store.levels[i];
-    const b = document.createElement('button');
-    b.className = best != null ? 'done' : i === next ? 'next' : '';
-    const n = best == null ? 0 : lvl.par === 1 ? oneMoveStars(best) : stars(best, lvl.par);
-    b.innerHTML = `<span class="num">${i + 1}</span><span class="stars">${n ? starText(n) : ''}</span>`;
-    b.setAttribute('aria-label', `Level ${i + 1}, ${lvl.name}${n ? `, ${n} stars` : ''}`);
-    b.onclick = () => playLevel(i);
-    grid.append(b);
+  const wrap = $('level-grid');
+  wrap.innerHTML = '';
+  const next = nextLevel();
+  let total = 0;
+  CHAPTERS.forEach((ch, k) => {
+    const sec = document.createElement('section');
+    sec.className = 'chapter';
+    const levels = chapterLevels(k);
+    const earned = chapterStars(k);
+    total += earned;
+    const head = document.createElement('div');
+    head.className = 'chapter-head';
+    head.innerHTML = `<div><h3>${ch.name}</h3><p>${ch.blurb}</p></div><span>${earned} / ${levels.length * 3} stars</span>`;
+    sec.append(head);
+
+    if (!chapterOpen(k)) {
+      // Locked: one card with the way in, not a wall of disabled tiles.
+      const prev = CHAPTERS[k - 1];
+      const have = chapterStars(k - 1);
+      sec.classList.add('locked');
+      head.lastElementChild.textContent = `${levels.length} levels`;
+      const card = document.createElement('div');
+      card.className = 'lock-card';
+      card.innerHTML = `<span class="lock-icon">${LOCK}</span><span class="lock-text"><b>Earn ${ch.unlock} stars in ${prev.name}</b><span>${ch.unlock - have} more to go</span><span class="meter"><span style="width:${(have / ch.unlock) * 100}%"></span></span></span>`;
+      sec.append(card);
+      wrap.append(sec);
+      return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'level-grid';
+    for (const i of levels) {
+      const lvl = LEVELS[i];
+      const n = levelStars(i);
+      const b = document.createElement('button');
+      b.className = i === next ? 'next' : bestOf(i) != null ? 'done' : 'fresh';
+      b.innerHTML = `<span class="num">${i + 1}</span><span class="name">${lvl.name}</span>${pips(lvl.tier)}<span class="stars">${starIcons(n)}</span>`;
+      b.setAttribute('aria-label', `Level ${i + 1}, ${lvl.name}, ${TIER_NAMES[lvl.tier]}${n ? `, ${n} stars` : ''}`);
+      b.onclick = () => playLevel(i);
+      grid.append(b);
+    }
+    sec.append(grid);
+    wrap.append(sec);
   });
+  $('levels-stars').innerHTML = `${STAR}<span>${total}</span>`;
   showPanel('panel-levels');
+  wrap.querySelector('.next')?.scrollIntoView({ block: 'center' });
 }
 
 function openCodeEntry() {
@@ -827,6 +1018,8 @@ for (const b of document.querySelectorAll('[data-icon]')) {
 }
 $('btn-menu').innerHTML = UI.menu;
 $('btn-help').innerHTML = UI.help;
+for (const el of document.querySelectorAll('[data-ui]')) el.innerHTML = UI[el.dataset.ui];
+$('m-logo').innerHTML = LOGO;
 
 $('btn-menu').onclick = openMenu;
 $('btn-help').onclick = () => showPanel('panel-help');
@@ -838,7 +1031,7 @@ $('btn-back-editor').onclick = () => openEditor(game.start);
 
 $('m-daily').onclick = () => playDaily();
 $('m-levels').onclick = openLevels;
-$('m-endless').onclick = playEndless;
+$('m-endless').onclick = openEndless;
 $('m-editor').onclick = () => openEditor(game.start && ui.mode !== 'editor' ? game.start : null);
 $('m-code').onclick = openCodeEntry;
 $('m-help').onclick = () => showPanel('panel-help');
@@ -846,6 +1039,11 @@ $('m-close').onclick = hidePanels;
 $('m-privacy').onclick = showPrivacyOptions;
 // The apps don't bundle the policy page; Capacitor opens the web copy in the browser.
 if (isNative) $('m-policy').href = `${WEB_URL}privacy.html`;
+const rateUrl = storeReviewUrl();
+if (rateUrl) {
+  $('m-rate').href = rateUrl;
+  $('m-rate').hidden = false;
+}
 
 for (const b of document.querySelectorAll('[data-back]')) {
   b.onclick = () => {
@@ -853,7 +1051,7 @@ for (const b of document.querySelectorAll('[data-back]')) {
       store.helpSeen = true;
       save();
     }
-    if (b.closest('#panel-levels, #panel-code')) openMenu();
+    if (b.closest('#panel-levels, #panel-code, #panel-endless')) openMenu();
     else if (canDismiss()) hidePanels();
     else openMenu();
   };
@@ -886,7 +1084,7 @@ $('ed-solve').onclick = () => checkEditor();
 $('ed-play').onclick = () => {
   const problems = validate(editor.state);
   if (problems.length) return editorSay(problems.join(' '));
-  loadPuzzle(editor.state, { kind: 'test', title: 'Testing your puzzle', hash: `e=${encode(editor.state)}` });
+  loadPuzzle(editor.state, { kind: 'test', title: 'Testing your puzzle', kicker: 'Editor', name: 'Test play', hash: `e=${encode(editor.state)}` });
 };
 $('ed-share').onclick = () =>
   checkEditor(async (r) => {
@@ -964,8 +1162,8 @@ function route(hash = location.hash) {
   if (key === 'c' && playCode(value)) return;
   if (key === 'e') return openEditor(decode(value) || emptyState());
   // No (valid) link: newcomers start at level 1, returning players at their next level.
-  const next = LEVELS.findIndex((_, i) => store.levels[i] == null);
-  playLevel(next < 0 ? LEVELS.length - 1 : next);
+  const next = nextLevel();
+  playLevel(next >= 0 ? next : LEVELS.map((_, i) => i).filter(levelOpen).pop());
   if (!store.helpSeen) showPanel('panel-help');
 }
 

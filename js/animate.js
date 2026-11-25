@@ -32,7 +32,7 @@ export class ChainAnimation {
       case 'fall':
         return {
           dur: 260,
-          begin: () => onFlash({ type: 'fall', x: e.x, y: e.y, color: e.kind === P.CUBE ? '#ff5d6c' : '#8a8cc0' }),
+          begin: () => onFlash({ type: 'fall', x: e.x, y: e.y, color: e.kind === P.CUBE ? COLORS.bad : COLORS.muted }),
           apply: (p) => Object.assign(piece(), { scale: 1 - p * 0.8, alpha: 1 - p }),
           end: () => this.display.delete(e.id),
         };

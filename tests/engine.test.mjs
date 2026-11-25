@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { F, P, SIZE, emptyState, withIds, idx, simulate, firstReaction, solve, winningMoves, validate, stateKey } from '../js/engine.js';
 import { encode, decode, formatCode } from '../js/codec.js';
 import { generateDaily, generatePuzzle, generateOneMove, dailyNumber } from '../js/generator.js';
-import { LEVELS } from '../js/levels.js';
+import { LEVELS, CHAPTERS } from '../js/levels.js';
+import { TIERS, measure, classify } from '../js/difficulty.js';
 
 // Build a board from 6 strings. Floor: . # T O ^ > v <   Pieces: B (block), C (cube).
 // A piece on special floor is written as two chars "floor+piece" inside [..], e.g. [TB].
@@ -151,6 +152,39 @@ test('campaign levels decode, validate, and solve in par', () => {
     const s = decode(lvl.code);
     assert.ok(s, `level ${i + 1} decodes`);
     assert.deepEqual(validate(s), [], `level ${i + 1} is valid`);
-    assert.equal(solve(s).moves, lvl.par, `level ${i + 1} par`);
+    assert.equal(solve(s, { maxDepth: 10, maxStates: 400000 }).moves, lvl.par, `level ${i + 1} par`);
+    if (lvl.par === 1) assert.equal(winningMoves(s).length, 1, `level ${i + 1} has exactly one winning move`);
   }
+});
+
+test('campaign chapters are in order and every level is its stated tier', () => {
+  assert.ok(CHAPTERS.length > 1 && CHAPTERS[0].unlock === 0);
+  let prev = 0;
+  for (const [i, lvl] of LEVELS.entries()) {
+    assert.ok(lvl.chapter >= prev && lvl.chapter < CHAPTERS.length, `level ${i + 1} chapter`);
+    prev = lvl.chapter;
+    assert.ok(TIERS.includes(lvl.tier), `level ${i + 1} tier name`);
+    const s = decode(lvl.code);
+    const r = solve(s, { maxDepth: 10, maxStates: 400000 });
+    assert.equal(classify(measure(s, r.moves, r.path)), lvl.tier, `level ${i + 1} (${lvl.name}) measures as ${lvl.tier}`);
+  }
+  assert.equal(new Set(LEVELS.map((l) => l.code)).size, LEVELS.length, 'no puzzle appears twice');
+});
+
+test('Master starts at par 9 with few ways in', () => {
+  const tier = (par, goodFirst) => classify({ par, goodFirst, cubeMoves: 1, movers: 1.5 });
+  assert.equal(tier(8, 1), 'expert');
+  assert.equal(tier(9, 4), 'expert');
+  assert.equal(tier(9, 3), 'master');
+  assert.equal(tier(10, 6), 'master');
+});
+
+test('the campaign keeps getting harder: no chapter peaks below the one before, and it ends on Master', () => {
+  let prevTop = 0;
+  for (const k of CHAPTERS.keys()) {
+    const top = Math.max(...LEVELS.filter((l) => l.chapter === k).map((l) => TIERS.indexOf(l.tier)));
+    assert.ok(top >= prevTop, `chapter ${k + 1} (${CHAPTERS[k].name}) peaks at ${TIERS[top]}`);
+    prevTop = top;
+  }
+  assert.equal(LEVELS.at(-1).tier, 'master');
 });
