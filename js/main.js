@@ -677,9 +677,9 @@ function openMenu() {
   showPanel('panel-menu');
 }
 
-const TIER_PIPS = { easy: 1, medium: 2, hard: 3, expert: 4 };
+const TIER_PIPS = { easy: 1, medium: 2, hard: 3, expert: 4, master: 5 };
 const pips = (tier) =>
-  `<span class="pips t-${tier}" aria-hidden="true">${[1, 2, 3, 4].map((n) => `<i${n <= TIER_PIPS[tier] ? ' class="on"' : ''}></i>`).join('')}</span>`;
+  `<span class="pips t-${tier}" aria-hidden="true">${[1, 2, 3, 4, 5].map((n) => `<i${n <= TIER_PIPS[tier] ? ' class="on"' : ''}></i>`).join('')}</span>`;
 
 function openLevels() {
   const wrap = $('level-grid');

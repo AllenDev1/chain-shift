@@ -9,8 +9,8 @@
 import { P, legalMoves, simulate, solve } from './engine.js';
 import { chainStats } from './generator.js';
 
-export const TIERS = ['easy', 'medium', 'hard', 'expert'];
-export const TIER_NAMES = { easy: 'Easy', medium: 'Medium', hard: 'Hard', expert: 'Expert' };
+export const TIERS = ['easy', 'medium', 'hard', 'expert', 'master'];
+export const TIER_NAMES = { easy: 'Easy', medium: 'Medium', hard: 'Hard', expert: 'Expert', master: 'Master' };
 
 // Pieces set moving, per move of the solution: how much chain the player has to predict.
 export function chainLength(state, solution) {
@@ -55,5 +55,8 @@ export function classify({ par, goodFirst, cubeMoves, movers }) {
   if (effective <= 2) return 'easy';
   if (effective <= 4) return 'medium';
   if (effective <= 6) return 'hard';
+  // Master: nine moves or more with few ways in. The par floor keeps every par-8 puzzle
+  // Expert, so the top tier is always longer than anything below it.
+  if (par >= 9 && effective >= 9) return 'master';
   return 'expert';
 }

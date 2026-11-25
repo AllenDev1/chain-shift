@@ -170,3 +170,21 @@ test('campaign chapters are in order and every level is its stated tier', () => 
   }
   assert.equal(new Set(LEVELS.map((l) => l.code)).size, LEVELS.length, 'no puzzle appears twice');
 });
+
+test('Master starts at par 9 with few ways in', () => {
+  const tier = (par, goodFirst) => classify({ par, goodFirst, cubeMoves: 1, movers: 1.5 });
+  assert.equal(tier(8, 1), 'expert');
+  assert.equal(tier(9, 4), 'expert');
+  assert.equal(tier(9, 3), 'master');
+  assert.equal(tier(10, 6), 'master');
+});
+
+test('the campaign keeps getting harder: no chapter peaks below the one before, and it ends on Master', () => {
+  let prevTop = 0;
+  for (const k of CHAPTERS.keys()) {
+    const top = Math.max(...LEVELS.filter((l) => l.chapter === k).map((l) => TIERS.indexOf(l.tier)));
+    assert.ok(top >= prevTop, `chapter ${k + 1} (${CHAPTERS[k].name}) peaks at ${TIERS[top]}`);
+    prevTop = top;
+  }
+  assert.equal(LEVELS.at(-1).tier, 'master');
+});

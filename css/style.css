@@ -501,15 +501,19 @@ button.mode.small { min-height: 56px; justify-content: center; gap: 10px; paddin
 .lock-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.88rem; }
 .lock-text b { color: var(--ink); font-size: 0.98rem; }
 
-/* Difficulty: four pips, filled up to the tier. Colour rises with it. */
+/* Difficulty: five pips, filled up to the tier. Colour rises with it. */
 .pips { display: inline-flex; gap: 3px; margin-top: 1px; }
 .pips i { width: 9px; height: 4px; border-radius: 2px; background: var(--edge); }
 .pips.t-easy i.on { background: var(--good); }
 .pips.t-medium i.on { background: var(--gold); }
 .pips.t-hard i.on { background: var(--signal); }
 .pips.t-expert i.on { background: var(--ink); }
+.pips.t-master i.on { background: var(--ink); }
+.pips.t-master i.on:last-child { background: var(--signal); }
 .level-grid .next .pips i:not(.on) { background: #4a4555; }
-.level-grid .next .pips.t-expert i.on { background: #fffdf8; }
+.level-grid .next .pips.t-expert i.on,
+.level-grid .next .pips.t-master i.on { background: #fffdf8; }
+.level-grid .next .pips.t-master i.on:last-child { background: var(--signal); }
 .level-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .level-grid button {
   min-height: 104px;

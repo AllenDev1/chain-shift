@@ -17,3 +17,4 @@ keystore.properties
 .idea/
 .vscode/
 *.log
+/video-for-review

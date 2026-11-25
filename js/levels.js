@@ -25,6 +25,26 @@ export const CHAPTERS = [
     "name": "Expert",
     "blurb": "Only one or two good first moves.",
     "unlock": 18
+  },
+  {
+    "name": "Long Haul",
+    "blurb": "Nine moves or more to the target.",
+    "unlock": 18
+  },
+  {
+    "name": "Tight Quarters",
+    "blurb": "Crowded boards. Every push moves a lot.",
+    "unlock": 15
+  },
+  {
+    "name": "Gauntlet",
+    "blurb": "Pits and arrows everywhere.",
+    "unlock": 15
+  },
+  {
+    "name": "Grandmaster",
+    "blurb": "The longest puzzles in the game.",
+    "unlock": 15
   }
 ];
 
@@ -508,5 +528,325 @@ export const LEVELS = [
     "par": 7,
     "tier": "expert",
     "chapter": 4
+  },
+  {
+    "name": "Slow Burn",
+    "tip": "Master puzzles take nine moves or more. Plan the last few moves first.",
+    "code": "9n3wvsoEEqYsX3pEe29Ki3WtUas6",
+    "par": 8,
+    "tier": "expert",
+    "chapter": 5
+  },
+  {
+    "name": "Uphill",
+    "tip": "",
+    "code": "114gZ13B71PPg3JwzJ2UgNEqH7rA",
+    "par": 7,
+    "tier": "expert",
+    "chapter": 5
+  },
+  {
+    "name": "Marathon",
+    "tip": "",
+    "code": "1VD1d5JPVWVQBSRt16UZseHXBBfW",
+    "par": 8,
+    "tier": "expert",
+    "chapter": 5
+  },
+  {
+    "name": "Tripwire",
+    "tip": "",
+    "code": "1vbaJs7avFU7Dg4bWLmKsokW1Bkh",
+    "par": 1,
+    "tier": "expert",
+    "chapter": 5
+  },
+  {
+    "name": "Odyssey",
+    "tip": "",
+    "code": "1VCzR5UhWQgo8i5pQ7ehJ74T2cF7",
+    "par": 10,
+    "tier": "master",
+    "chapter": 5
+  },
+  {
+    "name": "Nine Lives",
+    "tip": "",
+    "code": "1111115LkdtCCgMUNc7a8Uyt6WXB",
+    "par": 10,
+    "tier": "master",
+    "chapter": 5
+  },
+  {
+    "name": "Homestretch",
+    "tip": "",
+    "code": "111111111QbP2L8iDnmg6UDN1ttn",
+    "par": 10,
+    "tier": "master",
+    "chapter": 5
+  },
+  {
+    "name": "Long Division",
+    "tip": "",
+    "code": "1VLkawBJ3yfmEy9kg5RUhSZGgCE1",
+    "par": 9,
+    "tier": "master",
+    "chapter": 5
+  },
+  {
+    "name": "Slow Dance",
+    "tip": "",
+    "code": "12dGtGfTCzsh97JHR7NKrr3N5KMV",
+    "par": 10,
+    "tier": "master",
+    "chapter": 5
+  },
+  {
+    "name": "Summit",
+    "tip": "",
+    "code": "111JHf8ZecsyyBMeXpT1kV2Vej1d",
+    "par": 10,
+    "tier": "master",
+    "chapter": 5
+  },
+  {
+    "name": "Elbow Room",
+    "tip": "",
+    "code": "8KaobcnTD3n7ACeFBk66LVuTei7v",
+    "par": 6,
+    "tier": "expert",
+    "chapter": 6
+  },
+  {
+    "name": "Sardines",
+    "tip": "",
+    "code": "1112oum328xL818HGeUEeNS8THni",
+    "par": 7,
+    "tier": "expert",
+    "chapter": 6
+  },
+  {
+    "name": "Pressure Cooker",
+    "tip": "",
+    "code": "1111d7kFQiSa89BZFmxMG3oYSZED",
+    "par": 10,
+    "tier": "master",
+    "chapter": 6
+  },
+  {
+    "name": "Domino Run",
+    "tip": "",
+    "code": "8JXFYExCZrBBgpWRYNus6MGLDBSc",
+    "par": 1,
+    "tier": "expert",
+    "chapter": 6
+  },
+  {
+    "name": "Standing Room",
+    "tip": "",
+    "code": "111116FPZZKdwbDEx1AEZbxWub5D",
+    "par": 10,
+    "tier": "master",
+    "chapter": 6
+  },
+  {
+    "name": "Packed House",
+    "tip": "",
+    "code": "17hZDf2xDTECeF9H3kU8TxAoVyyA",
+    "par": 10,
+    "tier": "master",
+    "chapter": 6
+  },
+  {
+    "name": "Bumper to Bumper",
+    "tip": "",
+    "code": "9mzd6wdSerpPg4uGhXMS9QTkQ2Lq",
+    "par": 10,
+    "tier": "master",
+    "chapter": 6
+  },
+  {
+    "name": "Rush Hour",
+    "tip": "",
+    "code": "111115zH8XKQHGNwhbPznRVJGUxP",
+    "par": 10,
+    "tier": "master",
+    "chapter": 6
+  },
+  {
+    "name": "Squeeze Play",
+    "tip": "",
+    "code": "1VGsCdjECwzca8PFkYeAdQdaRnFD",
+    "par": 10,
+    "tier": "master",
+    "chapter": 6
+  },
+  {
+    "name": "Shoulder to Shoulder",
+    "tip": "",
+    "code": "1VH8eQA19BZu9pBSMUZumAAvbXTz",
+    "par": 10,
+    "tier": "master",
+    "chapter": 6
+  },
+  {
+    "name": "Minefield",
+    "tip": "",
+    "code": "11ht1RYh8Gyg3FmVPjEdD4ubhEKi",
+    "par": 8,
+    "tier": "expert",
+    "chapter": 7
+  },
+  {
+    "name": "Obstacle Course",
+    "tip": "",
+    "code": "12Liip68wZhaN6YuwMyY495B9MRR",
+    "par": 10,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Pitfall",
+    "tip": "",
+    "code": "6qYrLE1eeCfDmSTSytUAWje8bm2X",
+    "par": 10,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Booby Trap",
+    "tip": "",
+    "code": "ADSjTTXRBiLVTKFAE5kProuWsQkV",
+    "par": 1,
+    "tier": "expert",
+    "chapter": 7
+  },
+  {
+    "name": "Crucible",
+    "tip": "",
+    "code": "1XxhAxXTVvPXzcfEtryffSQ9gABd",
+    "par": 10,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Gauntlet Run",
+    "tip": "",
+    "code": "9oU9e2ayhbUyQzdc6n6hXPsJNoR9",
+    "par": 9,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Trial by Fire",
+    "tip": "",
+    "code": "9mZwCZNAHxQcS5irvi1mSoLeEyNr",
+    "par": 9,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Hall of Mirrors",
+    "tip": "",
+    "code": "8NL7rXii1g3kZz1P3u5MoSmacY8g",
+    "par": 9,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Brink",
+    "tip": "",
+    "code": "15JVF8CxpRhYR86D6eWew2SwVCLg",
+    "par": 10,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Point of No Return",
+    "tip": "",
+    "code": "1vfS3PVPZMY7EyTeikNT93CB8X9L",
+    "par": 10,
+    "tier": "master",
+    "chapter": 7
+  },
+  {
+    "name": "Grand Opening",
+    "tip": "",
+    "code": "1VDCJDDnGzy72Qv1GoDJUb277VH6",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "Clockmaker",
+    "tip": "",
+    "code": "12GpYM6tbiiWvB77HjELCNwCeMXJ",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "Long Shadow",
+    "tip": "",
+    "code": "6qYrxGnvQ2u8YAeiktj93fT9YCWZ",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "Domino Theory",
+    "tip": "",
+    "code": "13gbwwCV1u148c9KYGZvo1FYh9D3",
+    "par": 1,
+    "tier": "expert",
+    "chapter": 8
+  },
+  {
+    "name": "Chain Master",
+    "tip": "",
+    "code": "1VCzNqZ6pAk9fFj6v877qz1qaNoV",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "Weak Link",
+    "tip": "",
+    "code": "1rN2d63ozn2j1KDpdB2hD4d3mfCb",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "Iron Will",
+    "tip": "",
+    "code": "1WYu1WY29bLxtbYwmzYKx2eSnTqg",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "High Wire",
+    "tip": "",
+    "code": "16W2Cfs8USWgHedDGgDVj1T9djD4",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "Infinity",
+    "tip": "",
+    "code": "1x1B7e8ZQjziz2rWjiaX8FZGHDrd",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
+  },
+  {
+    "name": "Magnum Opus",
+    "tip": "The last level. Ten moves, almost no room for error.",
+    "code": "1ST4fBeYf8kMyiHcngDoziSTc7yE",
+    "par": 10,
+    "tier": "master",
+    "chapter": 8
   }
 ];
